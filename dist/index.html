@@ -864,31 +864,33 @@ code { font: 13px var(--mono); background: var(--bg); padding: 1px 5px; border-r
     var maxL = 0;
     nodes.forEach(function (c) { maxL = Math.max(maxL, layer[c]); });
 
-    var width = {};
-    nodes.forEach(function (c) { width[c] = Math.max(BW, 18 + A.clsLabel(c).length * 8.2); });
+    // todas las cajas del mismo ancho: la matriz queda en una rejilla
+    var BOXW = BW;
+    nodes.forEach(function (c) { BOXW = Math.max(BOXW, Math.ceil(18 + A.clsLabel(c).length * 8.2)); });
+    var U = (BOXW + GX) / 2; // media columna
 
     var layers = [], i;
     for (i = 0; i <= maxL; i++) layers.push([]);
     nodes.forEach(function (c) { layers[layer[c]].push(c); });
-    var up = {}, down = {}, chains = [], dn = 0;
+    var up = {}, down = {}, chains = [], dn = 0, dummy = {};
     function link(a, b) { (down[a] = down[a] || []).push(b); (up[b] = up[b] || []).push(a); }
     A.reduced.forEach(function (e) {
       var chain = [e.from], l;
       for (l = layer[e.from] + 1; l < layer[e.to]; l++) {
         var d = '~' + (dn++);
-        layer[d] = l; width[d] = 6; layers[l].push(d); chain.push(d);
+        layer[d] = l; dummy[d] = true; layers[l].push(d); chain.push(d);
       }
       chain.push(e.to);
       for (l = 0; l < chain.length - 1; l++) link(chain[l], chain[l + 1]);
       chains.push({ edge: e, chain: chain });
     });
-    // los vínculos sin orden también acercan las cajas
     var side = {};
     A.links.forEach(function (lk) {
       if (lonely[lk.a] || lonely[lk.b]) return;
       (side[lk.a] = side[lk.a] || []).push(lk.b); (side[lk.b] = side[lk.b] || []).push(lk.a);
     });
 
+    // orden dentro de cada nivel (baricentro)
     var pos = {};
     layers.forEach(function (L) { L.forEach(function (c, k) { pos[c] = k; }); });
     function sweep(L, nb) {
@@ -905,49 +907,103 @@ code { font: 13px var(--mono); background: var(--bg); padding: 1px 5px; border-r
       for (i = layers.length - 2; i >= 0; i--) sweep(layers[i], down);
     }
 
-    var X = {}, Y = {}, totalW;
-    var rowW = layers.map(function (L) {
-      return L.reduce(function (s, c) { return s + width[c]; }, 0) + GX * Math.max(0, L.length - 1);
-    });
-    totalW = Math.max.apply(null, rowW.concat([BW]));
-    layers.forEach(function (L, li) {
-      var x = PAD + (totalW - rowW[li]) / 2;
-      L.forEach(function (c) { X[c] = x + width[c] / 2; Y[c] = PAD + li * (BH + GY); x += width[c] + GX; });
-    });
-    for (pass = 0; pass < 4; pass++) {
-      layers.forEach(function (L) {
-        L.forEach(function (c, k) {
-          var ns = (up[c] || []).concat(down[c] || []);
-          if (!ns.length) return;
-          var want = ns.reduce(function (s, x) { return s + X[x]; }, 0) / ns.length;
-          var lo = k > 0 ? X[L[k - 1]] + width[L[k - 1]] / 2 + GX + width[c] / 2 : PAD + width[c] / 2;
-          var hi = k < L.length - 1 ? X[L[k + 1]] - width[L[k + 1]] / 2 - GX - width[c] / 2 : PAD + totalW - width[c] / 2;
-          if (lo <= hi) X[c] = Math.min(hi, Math.max(lo, want));
-        });
+    // posiciones en medias columnas (enteros): cajas a 2 de distancia, líneas sueltas a 1
+    function gap(a, b) { return dummy[a] && dummy[b] ? 1 : 2; }
+    var col = {};
+    layers.forEach(function (L) { var x = 0; L.forEach(function (c, k) { if (k) x += gap(L[k - 1], c); col[c] = x; }); });
+    function place(L, nbOf) {
+      var n = L.length; if (!n) return;
+      var want = L.map(function (c) {
+        var ns = nbOf(c);
+        if (!ns.length) return col[c];
+        var xs = ns.map(function (x) { return col[x]; });
+        return (Math.min.apply(null, xs) + Math.max.apply(null, xs)) / 2; // centrado entre sus vecinos extremos
       });
+      // prioridad: líneas largas primero (quedan rectas), luego cajas con más vecinos
+      var order = L.map(function (c, k) { return k; }).sort(function (p, q) {
+        var dp = dummy[L[p]] ? 1000 : nbOf(L[p]).length, dq = dummy[L[q]] ? 1000 : nbOf(L[q]).length;
+        return dq - dp || p - q;
+      });
+      var fixed = [];
+      order.forEach(function (k) {
+        var x = Math.round(want[k]), j;
+        // no pisar a los ya fijados, respetando el orden
+        for (j = k - 1; j >= 0; j--) if (fixed[j]) { var s = 0, t; for (t = j; t < k; t++) s += gap(L[t], L[t + 1]); x = Math.max(x, col[L[j]] + s); break; }
+        for (j = k + 1; j < n; j++) if (fixed[j]) { var s2 = 0, t2; for (t2 = k; t2 < j; t2++) s2 += gap(L[t2], L[t2 + 1]); x = Math.min(x, col[L[j]] - s2); break; }
+        col[L[k]] = x; fixed[k] = true;
+      });
+      for (var k = 1; k < n; k++) col[L[k]] = Math.max(col[L[k]], col[L[k - 1]] + gap(L[k - 1], L[k]));
     }
+    // al final: centrada bajo varias de arriba; si no, sobre varias de abajo; si no, recta
+    function both(c) {
+      var u = up[c] || [], d = down[c] || [];
+      if (dummy[c]) return u.concat(d);
+      if (u.length > 1) return u;
+      if (d.length > 1) return d;
+      return u.length ? u : d;
+    }
+    for (pass = 0; pass < 8; pass++) {
+      for (i = 1; i < layers.length; i++) place(layers[i], function (c) { return up[c] || []; });
+      for (i = layers.length - 2; i >= 0; i--) place(layers[i], function (c) { return down[c] || []; });
+    }
+    for (pass = 0; pass < 2; pass++) for (i = 0; i < layers.length; i++) place(layers[i], both);
+    // quitar columnas vacías: grupos separados quedan juntos, sin romper la verticalidad
+    var used = {};
+    Object.keys(col).forEach(function (c) { used[col[c]] = true; });
+    var vals = Object.keys(used).map(Number).sort(function (a, b) { return a - b; }), remap = {}, acc = 0;
+    vals.forEach(function (v, k) { if (k) acc += Math.min(2, v - vals[k - 1]); remap[v] = acc; });
+    Object.keys(col).forEach(function (c) { col[c] = remap[col[c]]; });
+    var minC = Infinity, maxC = -Infinity;
+    Object.keys(col).forEach(function (c) { minC = Math.min(minC, col[c]); maxC = Math.max(maxC, col[c]); });
+    if (minC === Infinity) { minC = 0; maxC = 0; }
+    var totalW = (maxC - minC) * U + BOXW;
+    var X = {}, Y = {};
+    layers.forEach(function (L, li) {
+      L.forEach(function (c) { X[c] = PAD + BOXW / 2 + (col[c] - minC) * U; Y[c] = PAD + li * (BH + GY); });
+    });
 
     var boxes = nodes.map(function (c) {
       return {
         id: c, members: A.classes[c].members, label: A.clsLabel(c), bad: A.classes[c].bad,
-        x: X[c] - width[c] / 2, y: Y[c], w: width[c], h: BH, cx: X[c]
+        x: X[c] - BOXW / 2, y: Y[c], w: BOXW, h: BH, cx: X[c]
       };
     });
-    var paths = chains.map(function (ch) {
-      var pts = [], k;
-      for (k = 0; k < ch.chain.length; k++) {
-        var c = ch.chain[k];
-        if (k === 0) pts.push([X[c], Y[c] + BH]);
-        else if (k === ch.chain.length - 1) pts.push([X[c], Y[c]]);
-        else { pts.push([X[c], Y[c]]); pts.push([X[c], Y[c] + BH]); }
+
+    // líneas en ángulo recto: cada unidad baja a una barra horizontal propia en el hueco de abajo
+    var bars = {}, seg = {};
+    chains.forEach(function (ch) {
+      for (var k = 0; k < ch.chain.length - 1; k++) {
+        var p = ch.chain[k], q = ch.chain[k + 1];
+        if (Math.abs(X[p] - X[q]) < 0.5) continue;
+        // varias que bajan a una sola: una barra común que las junta; si no, la barra sale de la de arriba
+        var key = layer[p] + '|' + ((up[q] || []).length > 1 && (down[p] || []).length === 1 ? 'in>' + q : p);
+        seg[k + '|' + ch.edge.from + '|' + ch.edge.to] = key;
+        var bar = bars[key] || (bars[key] = { l: layer[p], lo: X[p], hi: X[p] });
+        bar.lo = Math.min(bar.lo, X[q]); bar.hi = Math.max(bar.hi, X[q]);
       }
-      var d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
-      for (k = 1; k < pts.length; k++) {
-        var p = pts[k - 1], q = pts[k];
-        if (Math.abs(p[0] - q[0]) < 0.5) d += ' L' + q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+    });
+    var byLayer = {};
+    Object.keys(bars).forEach(function (k) { (byLayer[bars[k].l] = byLayer[bars[k].l] || []).push(bars[k]); });
+    Object.keys(byLayer).forEach(function (l) {
+      var list = byLayer[l].sort(function (a, b) { return a.lo - b.lo; }), ends = [];
+      list.forEach(function (bar) {
+        var t = 0; while (ends[t] != null && ends[t] > bar.lo - 6) t++;
+        bar.t = t; ends[t] = bar.hi;
+      });
+      var T = ends.length;
+      list.forEach(function (bar) { bar.y = Y[layers[l][0]] + BH + GY * (bar.t + 1) / (T + 1); });
+    });
+    function f(n) { return (Math.round(n * 10) / 10).toString(); }
+    var paths = chains.map(function (ch) {
+      var d = '', k;
+      for (k = 0; k < ch.chain.length - 1; k++) {
+        var p = ch.chain[k], q = ch.chain[k + 1], y0 = Y[p] + BH, y1 = Y[q];
+        if (k === 0) d += 'M' + f(X[p]) + ' ' + f(dummy[p] ? Y[p] : y0);
+        if (dummy[p]) d += ' L' + f(X[p]) + ' ' + f(y0);
+        if (Math.abs(X[p] - X[q]) < 0.5) d += ' L' + f(X[q]) + ' ' + f(y1);
         else {
-          var my = ((p[1] + q[1]) / 2).toFixed(1);
-          d += ' L' + p[0].toFixed(1) + ' ' + my + ' L' + q[0].toFixed(1) + ' ' + my + ' L' + q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+          var by = bars[seg[k + '|' + ch.edge.from + '|' + ch.edge.to]].y;
+          d += ' L' + f(X[p]) + ' ' + f(by) + ' L' + f(X[q]) + ' ' + f(by) + ' L' + f(X[q]) + ' ' + f(y1);
         }
       }
       return { d: d, from: ch.edge.from, to: ch.edge.to, inferred: ch.edge.inferred };
@@ -957,7 +1013,7 @@ code { font: 13px var(--mono); background: var(--bg); padding: 1px 5px; border-r
     var loose = [], lx = PAD, ly = mainH + (nodes.length ? 44 : PAD + 14);
     var looseW = Math.max(totalW, 300);
     A.lonely.forEach(function (c) {
-      var w = Math.max(BW, 18 + A.clsLabel(c).length * 8.2);
+      var w = Math.max(BOXW, Math.ceil(18 + A.clsLabel(c).length * 8.2));
       if (lx + w > PAD + looseW && lx > PAD) { lx = PAD; ly += BH + 12; }
       loose.push({ id: c, members: A.classes[c].members, label: A.clsLabel(c), bad: false, loose: true, x: lx, y: ly, w: w, h: BH, cx: lx + w / 2 });
       lx += w + 12;
@@ -971,7 +1027,12 @@ code { font: 13px var(--mono); background: var(--bg); padding: 1px 5px; border-r
       if (!a || !b) return null;
       var l = a.cx <= b.cx ? a : b, r = l === a ? b : a, d;
       var ay = l.y + l.h / 2, by = r.y + r.h / 2;
-      if (r.x >= l.x + l.w) d = 'M' + (l.x + l.w).toFixed(1) + ' ' + ay.toFixed(1) + ' L' + r.x.toFixed(1) + ' ' + by.toFixed(1);
+      if (r.x >= l.x + l.w && Math.abs(ay - by) < 0.5) d = 'M' + (l.x + l.w).toFixed(1) + ' ' + ay.toFixed(1) + ' L' + r.x.toFixed(1) + ' ' + by.toFixed(1);
+      else if (r.x >= l.x + l.w) {
+        // en ángulo recto: de lado de una, hasta encima o debajo de la otra
+        var ty = by > ay ? r.y : r.y + r.h;
+        d = 'M' + (l.x + l.w).toFixed(1) + ' ' + ay.toFixed(1) + ' L' + r.cx.toFixed(1) + ' ' + ay.toFixed(1) + ' L' + r.cx.toFixed(1) + ' ' + ty.toFixed(1);
+      }
       else {
         var t = a.y <= b.y ? a : b, u = t === a ? b : a;
         d = 'M' + t.cx.toFixed(1) + ' ' + (t.y + t.h).toFixed(1) + ' L' + u.cx.toFixed(1) + ' ' + u.y.toFixed(1);
