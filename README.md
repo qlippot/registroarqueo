@@ -4,7 +4,9 @@ Una página que recibe la tabla de unidades estratigráficas, la revisa y dibuja
 
 ## Uso
 
-Abre `dist/index.html` en el navegador. No necesita servidor ni conexión, salvo para las fuentes.
+En línea: https://qlippot.github.io/registroarqueo/
+
+También se puede descargar `dist/index.html` y abrirlo en el navegador. No necesita servidor ni conexión, salvo para las fuentes.
 
 - **Pegar:** copia las filas de la hoja de registro con la fila de títulos (CORTE, TIPO, Cubre…) y pégalas.
 - **Copiar:** devuelve la tabla para pegarla en la hoja.
@@ -58,3 +60,4 @@ npm run build   # rehace dist/index.html desde src/
 
 - `src/core.js`: lectura de la tabla, reglas, revisión y disposición de la matriz. Sin dependencias.
 - `src/index.template.html`: la página; `/*CORE*/` se sustituye por `core.js` al construir.
+- `.github/workflows/pages.yml`: en cada cambio en `main`, pasa las pruebas, construye y publica la página.
