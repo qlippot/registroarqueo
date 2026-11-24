@@ -49,8 +49,6 @@ Los tipos son Depósito, Relleno, Corte, Estructura, Arrasamiento y Superficie. 
 - North Hertfordshire Museums. 2010. *Archaeological Recording System* v2.5.
 - May, K., Taylor, J. S. y Binding, C. 2023. Stratigraphic Analysis and The Matrix. *Internet Archaeology* 61.
 
-No se han revisado aún las fichas del ICANH.
-
 ## Desarrollo
 
 ```
