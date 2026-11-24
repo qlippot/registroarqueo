@@ -1,0 +1,11 @@
+{
+  "name": "registroarqueo",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Registro estratigráfico: revisa la tabla de unidades y dibuja la matriz de Harris",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node test/core.test.js"
+  },
+  "license": "UNLICENSED"
+}

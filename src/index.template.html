@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matriz estratigráfica</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Idea: mesa de trabajo en dos columnas, la matriz a la izquierda y la tabla que la produce a la derecha. Reglas en otra pestaña. */
+:root {
+  --bg: #f1f4f3;
+  --surface: #ffffff;
+  --ink: #16211f;
+  --muted: #5a6966;
+  --line: #cdd7d4;
+  --accent: #0d6767;
+  --accent-ink: #ffffff;
+  --bad: #b3261e;
+  --bad-bg: #fbe9e7;
+  --warn: #855600;
+  --warn-bg: #fbf0d9;
+  --info: #35588a;
+  --info-bg: #e6edf7;
+  --later: #d5ebe7;
+  --earlier: #f1e4cf;
+  color-scheme: light;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); -webkit-text-size-adjust: 100%; }
+.app { min-height: 100%; display: flex; flex-direction: column; }
+h1 { font: 600 20px/1.2 var(--display); margin: 0; letter-spacing: .01em; }
+h2 { font: 600 15px/1.2 var(--display); margin: 0; text-transform: uppercase; letter-spacing: .06em; }
+p { margin: 0; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.tabs { display: flex; gap: 4px; }
+.tab { font: 500 14px var(--body); color: var(--muted); text-decoration: none; padding: 5px 12px; border-radius: 6px; border: 1px solid transparent; }
+.tab[aria-current="page"] { color: var(--ink); background: var(--bg); border-color: var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; }
+.chip b { font: 600 14px var(--mono); font-variant-numeric: tabular-nums; }
+.chip.bad { border-color: var(--bad); color: var(--bad); background: var(--bad-bg); }
+.chip.warn { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+.chip.ok { border-color: var(--accent); color: var(--accent); }
+.split { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px; min-height: 0; }
+.col { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (min-width: 900px) {
+  .app { height: 100%; }
+  .split { overflow: hidden; }
+  .col { overflow: auto; }
+}
+@media (max-width: 899px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+#matrix { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-height: 140px; flex: none; max-height: 72vh; overflow: auto; }
+#matrix svg { display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 22px; height: 0; border-top: 2px solid var(--ink); }
+.sw.inf { border-top-style: dashed; }
+.sw.lk { border-top: 2px dashed var(--accent); }
+.sw.une { border-top: 2.5px dotted var(--accent); }
+.sq { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--ink); }
+.sq.bad { border-color: var(--bad); background: var(--bad-bg); }
+svg text { font: 500 13px var(--mono); fill: var(--ink); pointer-events: none; }
+svg .bx rect { fill: var(--surface); stroke: var(--ink); stroke-width: 1.4; cursor: pointer; }
+svg .bx.loose rect { stroke-dasharray: 3 3; stroke: var(--muted); }
+svg .bx.later rect { fill: var(--later); }
+svg .bx.earlier rect { fill: var(--earlier); }
+svg .bx.bad rect { stroke: var(--bad); fill: var(--bad-bg); stroke-width: 2; }
+svg .bx.sel rect { stroke: var(--accent); stroke-width: 3; }
+svg .bx:focus { outline: none; }
+svg .bx:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
+svg .ln { fill: none; stroke: var(--ink); stroke-width: 1.3; }
+svg .ln.inf { stroke-dasharray: 5 4; }
+svg .ln.dim, svg .lk.dim { opacity: .25; }
+svg .lk { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 6 4; }
+svg .lk.une { stroke-dasharray: 2 3; stroke-width: 2.2; }
+svg .cap { font: 500 12px var(--body); fill: var(--muted); }
+#detail { border-left: 4px solid var(--accent); padding: 2px 0 2px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+#detail h3 { margin: 0; font: 600 15px var(--mono); }
+#detail dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 1px 12px; }
+#detail dt { color: var(--muted); }
+#detail dd { margin: 0; }
+.ids { font-family: var(--mono); font-size: 13.5px; }
+ul.problems { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+ul.problems li { display: flex; gap: 8px; align-items: flex-start; padding: 6px 9px; border-radius: 6px; border-left: 4px solid var(--line); background: var(--bg); font-size: 13.5px; }
+ul.problems li.error { border-left-color: var(--bad); background: var(--bad-bg); }
+ul.problems li.aviso { border-left-color: var(--warn); background: var(--warn-bg); }
+ul.problems li.info { border-left-color: var(--info); background: var(--info-bg); }
+ul.problems li button { margin-left: auto; flex: none; }
+.notes summary { font-size: 13px; color: var(--muted); cursor: pointer; padding: 2px 0; }
+.notes ul { margin-top: 5px; }
+.clean { padding: 7px 10px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); font-weight: 500; font-size: 14px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+button { font: 500 14px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; cursor: pointer; }
+button:hover { border-color: var(--ink); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.small { padding: 3px 8px; font-size: 13px; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+.more { position: relative; }
+.more summary { list-style: none; font: 500 14px var(--body); border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; cursor: pointer; background: var(--surface); }
+.more summary::-webkit-details-marker { display: none; }
+.more[open] summary { border-color: var(--ink); }
+.menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); min-width: 190px; }
+.menu button { text-align: left; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+table { border-collapse: collapse; font-size: 14px; }
+th { font: 600 11.5px var(--body); text-transform: uppercase; letter-spacing: .05em; text-align: left; color: var(--muted); padding: 4px 6px; white-space: nowrap; border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0; z-index: 1; }
+th.rel { color: var(--accent); }
+td { padding: 2px 3px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.del { vertical-align: middle; }
+tr.hit td { background: var(--later); }
+input, select, textarea { font: 14px var(--body); color: var(--ink); background: var(--surface); border: 1px solid transparent; border-radius: 4px; padding: 6px 6px; width: 100%; }
+td input:hover, td select:hover { border-color: var(--line); }
+td input.id, td input.refs { font-family: var(--mono); }
+td input:disabled { background: repeating-linear-gradient(135deg, var(--bg), var(--bg) 5px, var(--surface) 5px, var(--surface) 10px); }
+.w-s { min-width: 58px; width: 58px; } .w-m { min-width: 96px; width: 96px; } .w-l { min-width: 140px; width: 140px; } .w-xl { min-width: 220px; width: 220px; }
+textarea { border-color: var(--line); min-height: 120px; font: 13px/1.4 var(--mono); resize: vertical; }
+.panel { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.msg { font-size: 13.5px; }
+.msg.bad { color: var(--bad); }
+.msg.ok { color: var(--accent); }
+.note { color: var(--muted); font-size: 13.5px; }
+.rulesview { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 1100px; width: 100%; margin: 0 auto; }
+.rulesview section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.howto { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+.defs { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; }
+.defs dt { font-weight: 600; }
+.defs dd { margin: 0; }
+.rules { font-size: 13px; }
+.rules th { position: static; }
+.rules th, .rules td { padding: 5px 7px; text-align: center; border-bottom: 1px solid var(--line); }
+.rules th:first-child, .rules td:first-child { text-align: left; }
+.rules select { width: auto; border-color: var(--line); padding: 3px 4px; font-size: 13px; }
+.rules select.v-no { color: var(--bad); border-color: var(--bad); }
+.rules select.v-aviso { color: var(--warn); border-color: var(--warn); }
+.rules td.tn { text-align: left; color: var(--muted); font-size: 12.5px; min-width: 180px; }
+.src { display: flex; flex-direction: column; gap: 8px; font-size: 14px; max-width: 75ch; }
+.src h3 { margin: 6px 0 0; font: 600 14px var(--display); }
+.src ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.src a { color: var(--accent); }
+code { font: 13px var(--mono); background: var(--bg); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>Matriz estratigráfica</h1>
+    <nav class="tabs" aria-label="Vistas">
+      <a href="#matriz" id="t-matriz" class="tab">Matriz</a>
+      <a href="#reglas" id="t-reglas" class="tab">Reglas</a>
+    </nav>
+    <div class="chips" id="chips" aria-live="polite"></div>
+  </header>
+
+  <main id="v-matriz" class="split">
+    <section class="col" aria-label="Matriz">
+      <div id="matrix" class="scroll"></div>
+      <div class="legend">
+        <span><i class="sw"></i>orden</span>
+        <span><i class="sw inf"></i>dudosa</span>
+        <span><i class="sw lk"></i>equivalente</span>
+        <span><i class="sw une"></i>se une</span>
+        <span><i class="sq bad"></i>bucle</span>
+      </div>
+      <div id="detail" hidden></div>
+      <div id="problems"></div>
+    </section>
+
+    <section class="col" aria-label="Tabla">
+      <div class="tools">
+        <button type="button" id="b-add" class="primary">Añadir fila</button>
+        <button type="button" id="b-paste">Pegar</button>
+        <button type="button" id="b-copy">Copiar</button>
+        <details class="more">
+          <summary>Más</summary>
+          <div class="menu">
+            <button type="button" id="b-ex">Ver ejemplo</button>
+            <button type="button" id="b-exbad">Ejemplo con errores</button>
+            <button type="button" id="b-mine">Volver a mis filas</button>
+            <button type="button" id="b-clear" class="danger">Vaciar</button>
+          </div>
+        </details>
+      </div>
+      <p class="msg" id="msg" aria-live="polite" hidden></p>
+      <div class="panel" id="paste-panel" hidden>
+        <label for="paste-box">Pega las filas de tu hoja, con la fila de títulos.</label>
+        <textarea id="paste-box" spellcheck="false"></textarea>
+        <div class="tools">
+          <button type="button" id="b-read" class="primary">Reemplazar la tabla</button>
+          <button type="button" id="b-cancel">Cancelar</button>
+        </div>
+      </div>
+      <div class="panel" id="copy-panel" hidden>
+        <label for="copy-box">Copia y pega en tu hoja.</label>
+        <textarea id="copy-box" readonly spellcheck="false"></textarea>
+        <div class="tools"><button type="button" id="b-copyclose">Cerrar</button></div>
+      </div>
+      <div class="scroll tablewrap"><table id="table"></table></div>
+    </section>
+  </main>
+
+  <main id="v-reglas" class="rulesview" hidden>
+    <section>
+      <h2>Cómo anotar</h2>
+      <ul class="howto">
+        <li><code>2, 5</code> varias unidades</li>
+        <li><code>5?</code> dudosa</li>
+        <li><code>UE2:3</code> unidad de otro corte</li>
+        <li><code>n/o</code> no observada</li>
+        <li><code>5~</code> en <em>Se apoya</em>: contacto que no implica ser posterior</li>
+      </ul>
+      <dl class="defs">
+        <dt>Igual a</dt><dd>La misma unidad con dos números. Una sola caja.</dd>
+        <dt>Equivalente a</dt><dd>Partes correlacionadas, por ejemplo entre cortes. Sin orden entre sí.</dd>
+        <dt>Se une a</dt><dd>Estructuras trabadas, construidas a la vez.</dd>
+        <dt>Incierta</dt><dd>Hay contacto, pero no se sabe el orden.</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Qué admite cada tipo</h2>
+      <p class="note">Sí pasa, aviso pide revisar, no es un error.</p>
+      <div class="scroll"><table class="rules" id="rules"></table></div>
+      <div class="tools"><button type="button" id="b-rules">Restaurar</button></div>
+    </section>
+    <section>
+      <h2>Criterios y fuentes</h2>
+      <div class="src">
+        <h3>Lo que ordena</h3>
+        <p><em>Cubre</em>, <em>Corta</em> y <em>Rellena</em> hacen posterior al sujeto. <em>Se apoya en</em> también, salvo que el contacto se marque con <code>~</code>. <em>Se une a</em> y <em>Equivalente a</em> son contemporáneas y no ordenan. <em>Igual a</em> junta dos números en una unidad. Sobre arriba y abajo manda la estratigrafía, no la cota: el yeso de un techo está debajo de las vigas y es posterior (Harris 1989).</p>
+        <h3>Errores</h3>
+        <ul>
+          <li>Relaciones que no se corresponden entre las dos fichas, bucles, unidades que no existen.</li>
+          <li>Un depósito o una estructura que corta: solo corta un corte o una interfaz.</li>
+          <li>Algo que «rellena» una unidad que no es un corte.</li>
+          <li><em>Se une a</em> fuera de estructuras.</li>
+          <li>Dos unidades iguales, equivalentes o unidas que la secuencia pone una después de la otra.</li>
+          <li>Profundidad contraria a <em>Cubre</em>, solo entre depósitos del mismo corte en contacto directo.</li>
+        </ul>
+        <h3>Avisos, porque las fuentes no coinciden</h3>
+        <ul>
+          <li><strong>Un corte que corta otro corte.</strong> Harris lo admite; Historic England (2018) y North Herts (2010) piden relacionarlo con el relleno del anterior. Vale si no queda relleno en el cruce.</li>
+          <li><strong>Un depósito o un piso que se apoya en un muro.</strong> Historic England lo admite; North Herts no.</li>
+          <li><strong>Si apoyarse implica ser posterior.</strong> Historic England lo define así pero lo clasifica como relación física, fuera de la matriz; la ficha española e italiana lo tratan como sucesión; Parenti lo señala como la relación más problemática. Falla, por ejemplo, con el relleno de una zanja de cimiento o con un depósito que se acumula contra un muro durante siglos.</li>
+          <li><strong>Rellenos de un mismo corte sin orden entre sí.</strong> El orden entre rellenos sale de <em>Cubre</em> (Surrey, Historic England); <em>Rellena</em> en los superiores es redundante y no se dibuja.</li>
+          <li><strong>Unidades sin ninguna relación de orden.</strong></li>
+        </ul>
+        <h3>Lo que no se revisa, a propósito</h3>
+        <ul>
+          <li>Cotas entre cortes, de rellenos frente a capas de fuera, de estructuras o de estratos inclinados. Los rellenos quedan más bajos que capas contemporáneas de fuera de la fosa.</li>
+          <li>Fechas de materiales. Nunca cambian el lugar de una unidad en la secuencia; un objeto antiguo arriba es residual, no estratigrafía invertida.</li>
+          <li>Relaciones redundantes: se guardan y no se dibujan (ley de sucesión estratigráfica).</li>
+        </ul>
+        <h3>Fuentes principales</h3>
+        <ul>
+          <li>Harris, E. C. 1989. <em>Principles of Archaeological Stratigraphy</em>, 2.ª ed. <a href="http://harrismatrix.com/wp-content/uploads/2019/01/Principles_of_Archaeological_Stratigraphy.-2nd-edition.pdf">PDF</a></li>
+          <li>Museum of London. 1994. <em>Archaeological Site Manual</em>, 3.ª ed. <a href="https://colat.org.uk/wp-content/uploads/2023/08/mol-site-manual-3rd-edition.pdf">PDF</a></li>
+          <li>Historic England. 2018. <em>Archaeological Recording Manual</em>. <a href="https://historicengland.org.uk/content/docs/research/historic-england-archaeological-recording-manual-2018">Enlace</a></li>
+          <li>Surrey Archaeological Society. 2010. <em>Excavation Recording Manual</em>. <a href="https://www.surreyarchaeology.org.uk/sites/default/files/Excavation%20Recording%20Manual.pdf">PDF</a></li>
+          <li>North Hertfordshire Museums. 2010. <em>Archaeological Recording System</em> v2.5. <a href="https://nortoncommarch.wordpress.com/wp-content/uploads/2010/09/recording_system.pdf">PDF</a></li>
+          <li>May, K., Taylor, J. S. y Binding, C. 2023. Stratigraphic Analysis and The Matrix. <em>Internet Archaeology</em> 61. <a href="https://intarch.ac.uk/journal/issue61/2/">Enlace</a></li>
+        </ul>
+        <p class="note">No revisado: las fichas del ICANH, que pueden definir estos términos de otra forma.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/*CORE*/
+</script>
+<script>
+(function () {
+  'use strict';
+  var M = window.Matriz, KEY = 'matriz-estratigrafica-v1';
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function mk(corte, n, o) { var r = M.emptyRow(corte, n); Object.keys(o || {}).forEach(function (k) { r[k] = o[k]; }); return r; }
+
+  // Las filas de la hoja "Registro Estratigráfico". Las dos pestañas decían UE1; la segunda entra como UE2.
+  function mine() {
+    return [
+      mk('UE1', 1, { prof: '0-130', grosor: '130', tipo: 'Depósito', cubre: '2', desc: 'Relleno #1.', color: 'amarillo.', consist: 'Compacto.', comp: 'Suelo arenoso acompañado de piedras de diferentes tamaños.', mat: 'No.' }),
+      mk('UE1', 2, { prof: '130-150', grosor: '20', tipo: 'Depósito', desc: 'Tierra.', color: 'negro.', consist: 'Compacto.', comp: 'Tierra.', mat: 'No.' }),
+      mk('UE2', 1, { prof: '0-25', grosor: '25', tipo: 'Depósito', cubre: '2', desc: 'Relleno #1.', color: 'negro.', consist: 'Compacto.', comp: 'Tierra.', mat: 'No.' }),
+      mk('UE2', 2, { prof: '25-150', grosor: '125', tipo: 'Depósito', desc: 'Relleno #2.', color: 'amarillo.', consist: 'Compacto.', comp: 'Suelo arenoso acompañado de piedras pequeñas.', mat: 'No.' })
+    ];
+  }
+  // Sitio inventado, solo para ver una matriz con más forma.
+  function example(bad) {
+    var r = [
+      mk('C1', 1, { prof: '0-20', grosor: '20', tipo: 'Depósito', cubre: '2, 3', desc: 'Capa vegetal (ejemplo).' }),
+      mk('C1', 2, { prof: '20-70', grosor: '50', tipo: 'Relleno', rellena: '4', desc: 'Relleno de la fosa.' }),
+      mk('C1', 3, { prof: '20-35', grosor: '15', tipo: 'Depósito', cubre: '5', desc: 'Piso de tierra apisonada.' }),
+      mk('C1', 4, { tipo: 'Corte', corta: '3, 5', desc: 'Corte de la fosa.' }),
+      mk('C1', 5, { prof: '35-60', grosor: '25', tipo: 'Depósito', cubre: '6?, 7', desc: 'Nivelación.' }),
+      mk('C1', 6, { tipo: 'Estructura', cubre: '8', desc: 'Muro de adobe, tramo sur.' }),
+      mk('C1', 7, { prof: '60-80', grosor: '20', tipo: 'Depósito', cubre: '8', apoya: '6', desc: 'Derrumbe del muro.' }),
+      mk('C1', 8, { prof: '80-90', grosor: '10', tipo: 'Depósito', cubre: '10', desc: 'Piso antiguo.' }),
+      mk('C1', 9, { tipo: 'Estructura', une: '6', cubre: '8', desc: 'Muro de adobe, tramo norte, trabado con el sur.' }),
+      mk('C1', 10, { prof: '90-150', grosor: '60', tipo: 'Depósito', desc: 'Estéril.' }),
+      mk('C2', 1, { prof: '0-25', grosor: '25', tipo: 'Depósito', cubre: '2', equiv: 'C1:1', desc: 'Capa vegetal.' }),
+      mk('C2', 2, { prof: '25-55', grosor: '30', tipo: 'Depósito', cubre: '3', equiv: 'C1:5', desc: 'Nivelación.' }),
+      mk('C2', 3, { prof: '55-150', grosor: '95', tipo: 'Depósito', igual: 'C1:10', desc: 'Estéril, el mismo de C1.' })
+    ];
+    if (bad) {
+      r[9].cubre = '3';                          // bucle: el estéril cubre un piso que está encima
+      r[5].corta = '8';                          // una estructura no corta
+      r[7].grosor = '25';                        // grosor que no cuadra
+      r[2].cubre = '5, 14';                      // la 14 no existe
+      r.push(mk('C3', 1, { tipo: 'Estructura', une: '2', apoya: '2', desc: 'Pilar trabado con el muro, y además apoyado en él.' }));
+      r.push(mk('C3', 2, { tipo: 'Estructura', desc: 'Muro.' }));
+      r.push(mk('C1', 11, { prof: '40-50', tipo: 'Depósito', desc: 'Lente de ceniza sin relaciones anotadas.' }));
+      r.push(mk('C1', 12, { prof: '95-110', tipo: 'Depósito', cubre: '8', desc: 'Bolsón (profundidad contradice la relación).' }));
+      r.push(mk('C1', 13, { tipo: 'Corte', corta: '4', desc: 'Recorte de la fosa.' }));   // corte que corta un corte: aviso
+    }
+    return r;
+  }
+
+  var state = { rows: mine(), rules: M.defaultRules(), sel: null, source: 'mine' };
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved && Array.isArray(saved.rows) && saved.rows.length) {
+      state.rows = saved.rows.map(M.migrateRow);
+      state.rules = M.migrateRules(saved.rules);
+    }
+  } catch (e) { /* sin almacenamiento: se sigue con las filas iniciales */ }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify({ rows: state.rows, rules: state.rules })); } catch (e) { /* idem */ } }
+
+  var A = null;
+
+  /* ----- resumen ----- */
+  function renderChips() {
+    var c = A.counts, h = '';
+    h += '<span class="chip"><b>' + c.units + '</b>' + (c.units === 1 ? 'unidad' : 'unidades') + '</span>';
+    h += '<span class="chip"><b>' + c.relations + '</b>' + (c.relations === 1 ? 'relación' : 'relaciones') + '</span>';
+    h += '<span class="chip ' + (c.errors ? 'bad' : 'ok') + '"><b>' + c.errors + '</b>' + (c.errors === 1 ? 'error' : 'errores') + '</span>';
+    h += '<span class="chip ' + (c.warnings ? 'warn' : '') + '"><b>' + c.warnings + '</b>' + (c.warnings === 1 ? 'aviso' : 'avisos') + '</span>';
+    $('chips').innerHTML = h;
+  }
+
+  /* ----- matriz ----- */
+  function renderMatrix() {
+    var box = $('matrix');
+    if (!A.order.length) { box.innerHTML = '<p class="note" style="padding:14px">Tabla vacía.</p>'; return; }
+    var L = M.layout(A), near = { later: {}, earlier: {} };
+    if (state.sel && A.classes[state.sel]) {
+      var ar = M.around(A, state.sel);
+      ar.later.forEach(function (c) { near.later[c] = 1; });
+      ar.earlier.forEach(function (c) { near.earlier[c] = 1; });
+    } else state.sel = null;
+    var inSet = function (c) { return c === state.sel || near.later[c] || near.earlier[c]; };
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + Math.ceil(L.width) + '" height="' + Math.ceil(L.height) + '" viewBox="0 0 ' + Math.ceil(L.width) + ' ' + Math.ceil(L.height) + '" role="img" aria-label="Matriz estratigráfica">';
+    L.paths.forEach(function (p) {
+      var dim = state.sel && !(inSet(p.from) && inSet(p.to));
+      s += '<path class="ln' + (p.inferred ? ' inf' : '') + (dim ? ' dim' : '') + '" d="' + p.d + '"/>';
+    });
+    L.links.forEach(function (lk) {
+      var dim = state.sel && !(inSet(lk.a) && inSet(lk.b)) && lk.a !== state.sel && lk.b !== state.sel;
+      s += '<path class="lk' + (lk.rel === 'une' ? ' une' : '') + (dim ? ' dim' : '') + '" d="' + lk.d + '"/>';
+    });
+    if (L.looseY != null) s += '<text class="cap" x="18" y="' + (L.looseY + 4) + '">Sin relaciones de orden</text>';
+    L.boxes.forEach(function (b) {
+      var cls = 'bx' + (b.bad ? ' bad' : '') + (b.loose ? ' loose' : '') + (b.id === state.sel ? ' sel' : '') +
+        (near.later[b.id] ? ' later' : '') + (near.earlier[b.id] ? ' earlier' : '');
+      s += '<g class="' + cls + '" data-c="' + esc(b.id) + '" tabindex="0" role="button" aria-label="Unidad ' + esc(b.label) + '">' +
+        '<rect x="' + b.x.toFixed(1) + '" y="' + b.y.toFixed(1) + '" width="' + b.w.toFixed(1) + '" height="' + b.h + '" rx="3"/>' +
+        '<text x="' + b.cx.toFixed(1) + '" y="' + (b.y + b.h / 2 + 4.5).toFixed(1) + '" text-anchor="middle">' + esc(b.label) + '</text></g>';
+    });
+    box.innerHTML = s + '</svg>';
+    renderDetail();
+  }
+
+  function listRefs(u) {
+    var out = [];
+    M.RELS.forEach(function (R) {
+      var act = u.out.filter(function (e) { return e.rel === R.key; }).map(function (e) { return A.units[e.to].label + (e.inferred ? '?' : ''); });
+      var pas = u.inc.filter(function (e) { return e.rel === R.key; }).map(function (e) { return A.units[e.from].label + (e.inferred ? '?' : ''); });
+      if (R.key === 'apoya') {
+        act = u.out.filter(function (e) { return e.rel === 'apoya'; }).map(function (e) { return A.units[e.to].label + (e.inferred ? '?' : '') + (e.noOrder ? '~' : ''); });
+        pas = u.inc.filter(function (e) { return e.rel === 'apoya'; }).map(function (e) { return A.units[e.from].label + (e.inferred ? '?' : '') + (e.noOrder ? '~' : ''); });
+      }
+      if (!R.order) { act = act.concat(pas); pas = []; }
+      if (act.length) out.push([R.act, act.join(', ')]);
+      if (pas.length) out.push([R.pas, pas.join(', ')]);
+    });
+    return out;
+  }
+  function renderDetail() {
+    var d = $('detail');
+    if (!state.sel || !A.classes[state.sel]) { d.hidden = true; d.innerHTML = ''; return; }
+    var c = A.classes[state.sel], ar = M.around(A, state.sel), h = '';
+    c.members.forEach(function (id) {
+      var u = A.units[id];
+      h += '<h3>' + esc(u.label) + '</h3><dl>';
+      if (u.tipo) h += '<dt>Tipo</dt><dd>' + esc(u.tipo) + '' + '</dd>';
+      if (u.row.prof) h += '<dt>Profundidad</dt><dd>' + esc(u.row.prof) + ' cm</dd>';
+      if (u.row.desc) h += '<dt>Descripción</dt><dd>' + esc(u.row.desc) + '</dd>';
+      listRefs(u).forEach(function (p) { h += '<dt>' + esc(p[0]) + '</dt><dd class="ids">' + esc(p[1]) + '</dd>'; });
+      h += '</dl>';
+    });
+    if (c.bad) h += '<p class="msg bad">Está en un bucle: su orden no se sabe hasta resolverlo.</p>';
+    var names = function (list) { return list.length ? list.map(function (x) { return A.clsLabel(x); }).join(', ') : 'ninguna'; };
+    h += '<dl><dt>Posteriores (' + ar.later.length + ')</dt><dd class="ids">' + esc(names(ar.later)) + '</dd>' +
+      '<dt>Anteriores (' + ar.earlier.length + ')</dt><dd class="ids">' + esc(names(ar.earlier)) + '</dd></dl>';
+    h += '<div class="tools"><button type="button" class="small" id="b-unsel">Quitar selección</button></div>';
+    d.innerHTML = h; d.hidden = false;
+  }
+
+  /* ----- revisión ----- */
+  function renderProblems() {
+    var el = $('problems');
+    if (!A.order.length) { el.innerHTML = ''; return; }
+    var main = [], notes = [];
+    A.problems.forEach(function (x, i) { (x.sev === 'info' ? notes : main).push([x, i]); });
+    var word = { error: 'Error', aviso: 'Aviso', info: 'Nota' };
+    function li(p) {
+      var x = p[0];
+      return '<li class="' + x.sev + '"><span>' + esc(x.msg) + '</span>' +
+        (x.units.length ? '<button type="button" class="small go" data-p="' + p[1] + '" aria-label="Ver en la matriz">Ver</button>' : '') + '</li>';
+    }
+    var h = main.length ? '<ul class="problems">' + main.map(li).join('') + '</ul>'
+      : '<p class="clean">Sin problemas.</p>';
+    if (notes.length) h += '<details class="notes"><summary>' + notes.length + (notes.length === 1 ? ' nota' : ' notas') + '</summary><ul class="problems">' + notes.map(li).join('') + '</ul></details>';
+    el.innerHTML = h;
+    void word;
+  }
+
+  /* ----- tabla ----- */
+  var COLS = [
+    ['corte', 'Corte', 'w-s id'], ['n', 'N.º', 'w-s id'], ['tipo', 'Tipo', 'w-l'], ['prof', 'Prof. (cm)', 'w-m'], ['grosor', 'Grosor', 'w-s'],
+    ['cubre', 'Cubre', 'w-m refs', 1], ['corta', 'Corta', 'w-m refs', 1], ['rellena', 'Rellena', 'w-m refs', 1], ['apoya', 'Se apoya en', 'w-m refs', 1],
+    ['une', 'Se une a', 'w-m refs', 1], ['igual', 'Igual a', 'w-m refs', 1], ['equiv', 'Equivalente a', 'w-m refs', 1], ['incierta', 'Incierta', 'w-m refs', 1],
+    ['desc', 'Descripción', 'w-xl'], ['color', 'Color', 'w-m'], ['consist', 'Consistencia', 'w-m'], ['comp', 'Composición', 'w-xl'], ['mat', 'Materiales', 'w-l'], ['ubic', 'Ubicación', 'w-m']
+  ];
+  function relDisabled(r, k) { var ru = state.rules[M.canonType(r.tipo)]; return !!(ru && M.normRule(ru.act[k]) === 'no' && !String(r[k] || '').trim()); }
+  function renderTable() {
+    var h = '<thead><tr>' + COLS.map(function (c) { return '<th scope="col"' + (c[3] ? ' class="rel"' : '') + '>' + c[1] + '</th>'; }).join('') + '<th></th></tr></thead><tbody>';
+    state.rows.forEach(function (r, i) {
+      h += '<tr data-i="' + i + '">';
+      COLS.forEach(function (c) {
+        var k = c[0], id = 'c-' + i + '-' + k, lab = c[1] + ', fila ' + (i + 1);
+        if (k === 'tipo') {
+          var opts = M.TYPES.slice(); r.tipo = M.canonType(r.tipo);
+          if (r.tipo && opts.indexOf(r.tipo) < 0) opts.push(r.tipo);
+          h += '<td><select id="' + id + '" class="w-l" data-k="tipo" aria-label="' + lab + '"><option value=""></option>' +
+            opts.map(function (t) { return '<option' + (t === r.tipo ? ' selected' : '') + (M.TYPE_NOTE[t] ? ' title="' + esc(M.TYPE_NOTE[t]) + '"' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></td>';
+        } else {
+          h += '<td><input id="' + id + '" class="' + c[2] + '" data-k="' + k + '" value="' + esc(r[k]) + '" aria-label="' + lab + '"' +
+            (c[3] && relDisabled(r, k) ? ' disabled title="Este tipo no admite esta relación"' : '') + ' autocomplete="off" autocapitalize="off" spellcheck="false"></td>';
+        }
+      });
+      h += '<td class="del"><button type="button" class="small" data-del="' + i + '" aria-label="Quitar fila ' + (i + 1) + '">Quitar</button></td></tr>';
+    });
+    $('table').innerHTML = h + '</tbody>';
+    markRows();
+  }
+  function markRows() {
+    var hit = {};
+    if (state.sel && A && A.classes[state.sel]) A.classes[state.sel].members.forEach(function (id) { hit[A.units[id].idx] = 1; });
+    Array.prototype.forEach.call($('table').querySelectorAll('tbody tr'), function (tr) { tr.classList.toggle('hit', !!hit[tr.getAttribute('data-i')]); });
+  }
+
+  /* ----- reglas ----- */
+  function renderRules() {
+    var h = '<thead><tr><th scope="col">Tipo</th>';
+    M.RELS.forEach(function (R) {
+      if (R.key === 'igual' || R.key === 'equiv' || R.key === 'incierta') return;
+      h += '<th scope="col">' + R.act + '</th>'; if (R.order) h += '<th scope="col">' + R.pas + '</th>';
+    });
+    h += '<th scope="col">Qué es</th></tr></thead><tbody>';
+    M.TYPES.forEach(function (t, ti) {
+      h += '<tr><td>' + esc(t) + '</td>';
+      M.RELS.forEach(function (R) {
+        if (R.key === 'igual' || R.key === 'equiv' || R.key === 'incierta') return;
+        ['act', 'pas'].forEach(function (side) {
+          if (side === 'pas' && !R.order) return;
+          var v = M.normRule(state.rules[t][side][R.key]), w = v === 'si' ? '' : M.why(side, R.key, t);
+          h += '<td><select id="r-' + ti + '-' + side + '-' + R.key + '" class="v-' + v + '" data-t="' + esc(t) + '" data-side="' + side + '" data-rel="' + R.key + '"' +
+            ' aria-label="' + esc(t) + ': ' + (side === 'act' ? R.act : R.pas) + '"' + (w ? ' title="' + esc(w) + '"' : '') + '>' +
+            ['si', 'aviso', 'no'].map(function (o) { return '<option value="' + o + '"' + (o === v ? ' selected' : '') + '>' + (o === 'si' ? 'sí' : o) + '</option>'; }).join('') +
+            '</select></td>';
+        });
+      });
+      h += '<td class="tn">' + esc(M.TYPE_NOTE[t] || '') + '</td></tr>';
+    });
+    $('rules').innerHTML = h + '</tbody>';
+  }
+
+  function refresh(tableToo) {
+    A = M.analyse(state.rows, state.rules);
+    renderChips(); renderMatrix(); renderProblems();
+    if (tableToo) renderTable(); else markRows();
+    save();
+  }
+  function say(text, kind) { var m = $('msg'); m.textContent = text; m.className = 'msg ' + (kind || ''); m.hidden = !text; }
+  function select(c) { state.sel = c; renderMatrix(); markRows(); }
+
+  /* ----- eventos ----- */
+  $('table').addEventListener('input', function (e) {
+    var t = e.target, tr = t.closest('tr'); if (!tr || !t.getAttribute('data-k')) return;
+    state.rows[+tr.getAttribute('data-i')][t.getAttribute('data-k')] = t.value;
+    state.source = 'edited';
+    refresh(t.getAttribute('data-k') === 'tipo');
+  });
+  $('table').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-del]'); if (!b) return;
+    state.rows.splice(+b.getAttribute('data-del'), 1); state.sel = null; refresh(true);
+  });
+  $('matrix').addEventListener('click', function (e) {
+    var g = e.target.closest('[data-c]'); if (!g) return;
+    select(g.getAttribute('data-c') === state.sel ? null : g.getAttribute('data-c'));
+  });
+  $('matrix').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var g = e.target.closest('[data-c]'); if (!g) return;
+    e.preventDefault(); select(g.getAttribute('data-c'));
+  });
+  $('detail').addEventListener('click', function (e) { if (e.target.id === 'b-unsel') select(null); });
+  $('problems').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-p]'); if (!b) return;
+    var p = A.problems[+b.getAttribute('data-p')];
+    if (p && p.units.length && A.units[p.units[0]]) {
+      select(A.classOf(p.units[0]));
+      $('matrix').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
+  $('rules').addEventListener('change', function (e) {
+    var t = e.target; if (!t.getAttribute('data-rel')) return;
+    state.rules[t.getAttribute('data-t')][t.getAttribute('data-side')][t.getAttribute('data-rel')] = t.value;
+    t.className = 'v-' + t.value;
+    t.title = t.value === 'si' ? '' : M.why(t.getAttribute('data-side'), t.getAttribute('data-rel'), t.getAttribute('data-t'));
+    refresh(true);
+  });
+  $('b-rules').addEventListener('click', function () { state.rules = M.defaultRules(); renderRules(); refresh(true); });
+  $('b-add').addEventListener('click', function () {
+    var last = state.rows[state.rows.length - 1], n = '';
+    if (last) { var m = String(last.n).match(/^\d+$/); n = m ? String(+last.n + 1) : ''; }
+    state.rows.push(mk(last ? last.corte : '', n, { tipo: last ? last.tipo : 'Depósito' }));
+    refresh(true);
+    var el = $('c-' + (state.rows.length - 1) + '-' + (n ? 'prof' : 'n')); if (el) el.focus();
+  });
+  $('b-paste').addEventListener('click', function () { $('paste-panel').hidden = false; $('copy-panel').hidden = true; $('paste-box').focus(); });
+  $('b-cancel').addEventListener('click', function () { $('paste-panel').hidden = true; });
+  $('b-read').addEventListener('click', function () {
+    var res = M.importTable($('paste-box').value);
+    if (res.error) { say(res.error, 'bad'); return; }
+    state.rows = res.rows; state.sel = null; state.source = 'edited';
+    $('paste-panel').hidden = true; $('paste-box').value = '';
+    refresh(true);
+    say('Leídas ' + res.rows.length + ' filas con datos' + (res.skipped ? ' (' + res.skipped + ' vacías, sin usar)' : '') + '.', 'ok');
+  });
+  $('b-copy').addEventListener('click', function () {
+    var text = M.exportTable(state.rows);
+    function fallback() { $('copy-panel').hidden = false; $('paste-panel').hidden = true; var b = $('copy-box'); b.value = text; b.focus(); b.select(); }
+    try {
+      navigator.clipboard.writeText(text).then(function () { say('Tabla copiada. Pégala en tu hoja.', 'ok'); }, fallback);
+    } catch (e) { fallback(); }
+  });
+  $('b-copyclose').addEventListener('click', function () { $('copy-panel').hidden = true; });
+  $('b-ex').addEventListener('click', function () { state.rows = example(false); state.sel = null; refresh(true); say('Ejemplo inventado, no son datos reales.', ''); });
+  $('b-exbad').addEventListener('click', function () { state.rows = example(true); state.sel = null; refresh(true); say('Ejemplo con fallos puestos a propósito.', ''); });
+  $('b-mine').addEventListener('click', function () { state.rows = mine(); state.sel = null; refresh(true); say('Tus cuatro filas. La segunda pestaña entra como UE2.', ''); });
+  var armed = false, timer = null;
+  $('b-clear').addEventListener('click', function () {
+    var b = $('b-clear');
+    if (!armed) { armed = true; b.textContent = 'Confirmar: vaciar la tabla'; timer = setTimeout(function () { armed = false; b.textContent = 'Vaciar'; }, 4000); return; }
+    clearTimeout(timer); armed = false; b.textContent = 'Vaciar';
+    state.rows = [mk('', '1', { tipo: 'Depósito' })]; state.sel = null; refresh(true); say('Tabla vaciada.', '');
+  });
+
+  function route() {
+    var v = location.hash === '#reglas' ? 'reglas' : 'matriz';
+    $('v-matriz').hidden = v !== 'matriz'; $('v-reglas').hidden = v !== 'reglas';
+    $('t-matriz').setAttribute('aria-current', v === 'matriz' ? 'page' : 'false');
+    $('t-reglas').setAttribute('aria-current', v === 'reglas' ? 'page' : 'false');
+  }
+  window.addEventListener('hashchange', route);
+  document.querySelector('.menu').addEventListener('click', function (e) { if (e.target.closest('button') && e.target.id !== 'b-clear') document.querySelector('.more').open = false; });
+  document.addEventListener('click', function (e) { var m = document.querySelector('.more'); if (m.open && !e.target.closest('.more')) m.open = false; });
+  route();
+  renderRules();
+  refresh(true);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matriz estratigráfica</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* Idea: mesa de trabajo en dos columnas, la matriz a la izquierda y la tabla que la produce a la derecha. Reglas en otra pestaña. */
+:root {
+  --bg: #f1f4f3;
+  --surface: #ffffff;
+  --ink: #16211f;
+  --muted: #5a6966;
+  --line: #cdd7d4;
+  --accent: #0d6767;
+  --accent-ink: #ffffff;
+  --bad: #b3261e;
+  --bad-bg: #fbe9e7;
+  --warn: #855600;
+  --warn-bg: #fbf0d9;
+  --info: #35588a;
+  --info-bg: #e6edf7;
+  --later: #d5ebe7;
+  --earlier: #f1e4cf;
+  color-scheme: light;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); -webkit-text-size-adjust: 100%; }
+.app { min-height: 100%; display: flex; flex-direction: column; }
+h1 { font: 600 20px/1.2 var(--display); margin: 0; letter-spacing: .01em; }
+h2 { font: 600 15px/1.2 var(--display); margin: 0; text-transform: uppercase; letter-spacing: .06em; }
+p { margin: 0; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.tabs { display: flex; gap: 4px; }
+.tab { font: 500 14px var(--body); color: var(--muted); text-decoration: none; padding: 5px 12px; border-radius: 6px; border: 1px solid transparent; }
+.tab[aria-current="page"] { color: var(--ink); background: var(--bg); border-color: var(--line); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.chip { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; }
+.chip b { font: 600 14px var(--mono); font-variant-numeric: tabular-nums; }
+.chip.bad { border-color: var(--bad); color: var(--bad); background: var(--bad-bg); }
+.chip.warn { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+.chip.ok { border-color: var(--accent); color: var(--accent); }
+.split { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px; min-height: 0; }
+.col { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+@media (min-width: 900px) {
+  .app { height: 100%; }
+  .split { overflow: hidden; }
+  .col { overflow: auto; }
+}
+@media (max-width: 899px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+#matrix { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-height: 140px; flex: none; max-height: 72vh; overflow: auto; }
+#matrix svg { display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 22px; height: 0; border-top: 2px solid var(--ink); }
+.sw.inf { border-top-style: dashed; }
+.sw.lk { border-top: 2px dashed var(--accent); }
+.sw.une { border-top: 2.5px dotted var(--accent); }
+.sq { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid var(--ink); }
+.sq.bad { border-color: var(--bad); background: var(--bad-bg); }
+svg text { font: 500 13px var(--mono); fill: var(--ink); pointer-events: none; }
+svg .bx rect { fill: var(--surface); stroke: var(--ink); stroke-width: 1.4; cursor: pointer; }
+svg .bx.loose rect { stroke-dasharray: 3 3; stroke: var(--muted); }
+svg .bx.later rect { fill: var(--later); }
+svg .bx.earlier rect { fill: var(--earlier); }
+svg .bx.bad rect { stroke: var(--bad); fill: var(--bad-bg); stroke-width: 2; }
+svg .bx.sel rect { stroke: var(--accent); stroke-width: 3; }
+svg .bx:focus { outline: none; }
+svg .bx:focus-visible rect { stroke: var(--accent); stroke-width: 3; }
+svg .ln { fill: none; stroke: var(--ink); stroke-width: 1.3; }
+svg .ln.inf { stroke-dasharray: 5 4; }
+svg .ln.dim, svg .lk.dim { opacity: .25; }
+svg .lk { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-dasharray: 6 4; }
+svg .lk.une { stroke-dasharray: 2 3; stroke-width: 2.2; }
+svg .cap { font: 500 12px var(--body); fill: var(--muted); }
+#detail { border-left: 4px solid var(--accent); padding: 2px 0 2px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+#detail h3 { margin: 0; font: 600 15px var(--mono); }
+#detail dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 1px 12px; }
+#detail dt { color: var(--muted); }
+#detail dd { margin: 0; }
+.ids { font-family: var(--mono); font-size: 13.5px; }
+ul.problems { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+ul.problems li { display: flex; gap: 8px; align-items: flex-start; padding: 6px 9px; border-radius: 6px; border-left: 4px solid var(--line); background: var(--bg); font-size: 13.5px; }
+ul.problems li.error { border-left-color: var(--bad); background: var(--bad-bg); }
+ul.problems li.aviso { border-left-color: var(--warn); background: var(--warn-bg); }
+ul.problems li.info { border-left-color: var(--info); background: var(--info-bg); }
+ul.problems li button { margin-left: auto; flex: none; }
+.notes summary { font-size: 13px; color: var(--muted); cursor: pointer; padding: 2px 0; }
+.notes ul { margin-top: 5px; }
+.clean { padding: 7px 10px; border-radius: 6px; border: 1px solid var(--accent); color: var(--accent); font-weight: 500; font-size: 14px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+button { font: 500 14px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; cursor: pointer; }
+button:hover { border-color: var(--ink); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.small { padding: 3px 8px; font-size: 13px; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+.more { position: relative; }
+.more summary { list-style: none; font: 500 14px var(--body); border: 1px solid var(--line); border-radius: 6px; padding: 6px 11px; cursor: pointer; background: var(--surface); }
+.more summary::-webkit-details-marker { display: none; }
+.more[open] summary { border-color: var(--ink); }
+.menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); min-width: 190px; }
+.menu button { text-align: left; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+table { border-collapse: collapse; font-size: 14px; }
+th { font: 600 11.5px var(--body); text-transform: uppercase; letter-spacing: .05em; text-align: left; color: var(--muted); padding: 4px 6px; white-space: nowrap; border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0; z-index: 1; }
+th.rel { color: var(--accent); }
+td { padding: 2px 3px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.del { vertical-align: middle; }
+tr.hit td { background: var(--later); }
+input, select, textarea { font: 14px var(--body); color: var(--ink); background: var(--surface); border: 1px solid transparent; border-radius: 4px; padding: 6px 6px; width: 100%; }
+td input:hover, td select:hover { border-color: var(--line); }
+td input.id, td input.refs { font-family: var(--mono); }
+td input:disabled { background: repeating-linear-gradient(135deg, var(--bg), var(--bg) 5px, var(--surface) 5px, var(--surface) 10px); }
+.w-s { min-width: 58px; width: 58px; } .w-m { min-width: 96px; width: 96px; } .w-l { min-width: 140px; width: 140px; } .w-xl { min-width: 220px; width: 220px; }
+textarea { border-color: var(--line); min-height: 120px; font: 13px/1.4 var(--mono); resize: vertical; }
+.panel { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.msg { font-size: 13.5px; }
+.msg.bad { color: var(--bad); }
+.msg.ok { color: var(--accent); }
+.note { color: var(--muted); font-size: 13.5px; }
+.rulesview { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 1100px; width: 100%; margin: 0 auto; }
+.rulesview section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.howto { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+.defs { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; }
+.defs dt { font-weight: 600; }
+.defs dd { margin: 0; }
+.rules { font-size: 13px; }
+.rules th { position: static; }
+.rules th, .rules td { padding: 5px 7px; text-align: center; border-bottom: 1px solid var(--line); }
+.rules th:first-child, .rules td:first-child { text-align: left; }
+.rules select { width: auto; border-color: var(--line); padding: 3px 4px; font-size: 13px; }
+.rules select.v-no { color: var(--bad); border-color: var(--bad); }
+.rules select.v-aviso { color: var(--warn); border-color: var(--warn); }
+.rules td.tn { text-align: left; color: var(--muted); font-size: 12.5px; min-width: 180px; }
+.src { display: flex; flex-direction: column; gap: 8px; font-size: 14px; max-width: 75ch; }
+.src h3 { margin: 6px 0 0; font: 600 14px var(--display); }
+.src ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.src a { color: var(--accent); }
+code { font: 13px var(--mono); background: var(--bg); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>Matriz estratigráfica</h1>
+    <nav class="tabs" aria-label="Vistas">
+      <a href="#matriz" id="t-matriz" class="tab">Matriz</a>
+      <a href="#reglas" id="t-reglas" class="tab">Reglas</a>
+    </nav>
+    <div class="chips" id="chips" aria-live="polite"></div>
+  </header>
+
+  <main id="v-matriz" class="split">
+    <section class="col" aria-label="Matriz">
+      <div id="matrix" class="scroll"></div>
+      <div class="legend">
+        <span><i class="sw"></i>orden</span>
+        <span><i class="sw inf"></i>dudosa</span>
+        <span><i class="sw lk"></i>equivalente</span>
+        <span><i class="sw une"></i>se une</span>
+        <span><i class="sq bad"></i>bucle</span>
+      </div>
+      <div id="detail" hidden></div>
+      <div id="problems"></div>
+    </section>
+
+    <section class="col" aria-label="Tabla">
+      <div class="tools">
+        <button type="button" id="b-add" class="primary">Añadir fila</button>
+        <button type="button" id="b-paste">Pegar</button>
+        <button type="button" id="b-copy">Copiar</button>
+        <details class="more">
+          <summary>Más</summary>
+          <div class="menu">
+            <button type="button" id="b-ex">Ver ejemplo</button>
+            <button type="button" id="b-exbad">Ejemplo con errores</button>
+            <button type="button" id="b-mine">Volver a mis filas</button>
+            <button type="button" id="b-clear" class="danger">Vaciar</button>
+          </div>
+        </details>
+      </div>
+      <p class="msg" id="msg" aria-live="polite" hidden></p>
+      <div class="panel" id="paste-panel" hidden>
+        <label for="paste-box">Pega las filas de tu hoja, con la fila de títulos.</label>
+        <textarea id="paste-box" spellcheck="false"></textarea>
+        <div class="tools">
+          <button type="button" id="b-read" class="primary">Reemplazar la tabla</button>
+          <button type="button" id="b-cancel">Cancelar</button>
+        </div>
+      </div>
+      <div class="panel" id="copy-panel" hidden>
+        <label for="copy-box">Copia y pega en tu hoja.</label>
+        <textarea id="copy-box" readonly spellcheck="false"></textarea>
+        <div class="tools"><button type="button" id="b-copyclose">Cerrar</button></div>
+      </div>
+      <div class="scroll tablewrap"><table id="table"></table></div>
+    </section>
+  </main>
+
+  <main id="v-reglas" class="rulesview" hidden>
+    <section>
+      <h2>Cómo anotar</h2>
+      <ul class="howto">
+        <li><code>2, 5</code> varias unidades</li>
+        <li><code>5?</code> dudosa</li>
+        <li><code>UE2:3</code> unidad de otro corte</li>
+        <li><code>n/o</code> no observada</li>
+        <li><code>5~</code> en <em>Se apoya</em>: contacto que no implica ser posterior</li>
+      </ul>
+      <dl class="defs">
+        <dt>Igual a</dt><dd>La misma unidad con dos números. Una sola caja.</dd>
+        <dt>Equivalente a</dt><dd>Partes correlacionadas, por ejemplo entre cortes. Sin orden entre sí.</dd>
+        <dt>Se une a</dt><dd>Estructuras trabadas, construidas a la vez.</dd>
+        <dt>Incierta</dt><dd>Hay contacto, pero no se sabe el orden.</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Qué admite cada tipo</h2>
+      <p class="note">Sí pasa, aviso pide revisar, no es un error.</p>
+      <div class="scroll"><table class="rules" id="rules"></table></div>
+      <div class="tools"><button type="button" id="b-rules">Restaurar</button></div>
+    </section>
+    <section>
+      <h2>Criterios y fuentes</h2>
+      <div class="src">
+        <h3>Lo que ordena</h3>
+        <p><em>Cubre</em>, <em>Corta</em> y <em>Rellena</em> hacen posterior al sujeto. <em>Se apoya en</em> también, salvo que el contacto se marque con <code>~</code>. <em>Se une a</em> y <em>Equivalente a</em> son contemporáneas y no ordenan. <em>Igual a</em> junta dos números en una unidad. Sobre arriba y abajo manda la estratigrafía, no la cota: el yeso de un techo está debajo de las vigas y es posterior (Harris 1989).</p>
+        <h3>Errores</h3>
+        <ul>
+          <li>Relaciones que no se corresponden entre las dos fichas, bucles, unidades que no existen.</li>
+          <li>Un depósito o una estructura que corta: solo corta un corte o una interfaz.</li>
+          <li>Algo que «rellena» una unidad que no es un corte.</li>
+          <li><em>Se une a</em> fuera de estructuras.</li>
+          <li>Dos unidades iguales, equivalentes o unidas que la secuencia pone una después de la otra.</li>
+          <li>Profundidad contraria a <em>Cubre</em>, solo entre depósitos del mismo corte en contacto directo.</li>
+        </ul>
+        <h3>Avisos, porque las fuentes no coinciden</h3>
+        <ul>
+          <li><strong>Un corte que corta otro corte.</strong> Harris lo admite; Historic England (2018) y North Herts (2010) piden relacionarlo con el relleno del anterior. Vale si no queda relleno en el cruce.</li>
+          <li><strong>Un depósito o un piso que se apoya en un muro.</strong> Historic England lo admite; North Herts no.</li>
+          <li><strong>Si apoyarse implica ser posterior.</strong> Historic England lo define así pero lo clasifica como relación física, fuera de la matriz; la ficha española e italiana lo tratan como sucesión; Parenti lo señala como la relación más problemática. Falla, por ejemplo, con el relleno de una zanja de cimiento o con un depósito que se acumula contra un muro durante siglos.</li>
+          <li><strong>Rellenos de un mismo corte sin orden entre sí.</strong> El orden entre rellenos sale de <em>Cubre</em> (Surrey, Historic England); <em>Rellena</em> en los superiores es redundante y no se dibuja.</li>
+          <li><strong>Unidades sin ninguna relación de orden.</strong></li>
+        </ul>
+        <h3>Lo que no se revisa, a propósito</h3>
+        <ul>
+          <li>Cotas entre cortes, de rellenos frente a capas de fuera, de estructuras o de estratos inclinados. Los rellenos quedan más bajos que capas contemporáneas de fuera de la fosa.</li>
+          <li>Fechas de materiales. Nunca cambian el lugar de una unidad en la secuencia; un objeto antiguo arriba es residual, no estratigrafía invertida.</li>
+          <li>Relaciones redundantes: se guardan y no se dibujan (ley de sucesión estratigráfica).</li>
+        </ul>
+        <h3>Fuentes principales</h3>
+        <ul>
+          <li>Harris, E. C. 1989. <em>Principles of Archaeological Stratigraphy</em>, 2.ª ed. <a href="http://harrismatrix.com/wp-content/uploads/2019/01/Principles_of_Archaeological_Stratigraphy.-2nd-edition.pdf">PDF</a></li>
+          <li>Museum of London. 1994. <em>Archaeological Site Manual</em>, 3.ª ed. <a href="https://colat.org.uk/wp-content/uploads/2023/08/mol-site-manual-3rd-edition.pdf">PDF</a></li>
+          <li>Historic England. 2018. <em>Archaeological Recording Manual</em>. <a href="https://historicengland.org.uk/content/docs/research/historic-england-archaeological-recording-manual-2018">Enlace</a></li>
+          <li>Surrey Archaeological Society. 2010. <em>Excavation Recording Manual</em>. <a href="https://www.surreyarchaeology.org.uk/sites/default/files/Excavation%20Recording%20Manual.pdf">PDF</a></li>
+          <li>North Hertfordshire Museums. 2010. <em>Archaeological Recording System</em> v2.5. <a href="https://nortoncommarch.wordpress.com/wp-content/uploads/2010/09/recording_system.pdf">PDF</a></li>
+          <li>May, K., Taylor, J. S. y Binding, C. 2023. Stratigraphic Analysis and The Matrix. <em>Internet Archaeology</em> 61. <a href="https://intarch.ac.uk/journal/issue61/2/">Enlace</a></li>
+        </ul>
+        <p class="note">No revisado: las fichas del ICANH, que pueden definir estos términos de otra forma.</p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* Matriz estratigráfica: lógica. Sin dependencias. Funciona en navegador y en Node.
+   Reglas basadas en Harris (1989), MoLAS (1994), Historic England (2018), Surrey (2010), North Herts (2010)
+   y la práctica española de la ficha de UE. Ver la sección de fuentes de la página. */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.Matriz = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  // kind: 'order' = el sujeto es posterior; 'contemp' = a la vez, sin orden; 'identity' = la misma unidad; 'none' = sin implicación
+  var RELS = [
+    { key: 'cubre', act: 'Cubre', pas: 'Cubierto por', kind: 'order' },
+    { key: 'corta', act: 'Corta', pas: 'Cortado por', kind: 'order' },
+    { key: 'rellena', act: 'Rellena', pas: 'Rellenado por', kind: 'order' },
+    { key: 'apoya', act: 'Se apoya en', pas: 'Se le apoya', kind: 'order', defeasible: true },
+    { key: 'une', act: 'Se une a', pas: 'Se une a', kind: 'contemp' },
+    { key: 'igual', act: 'Igual a', pas: 'Igual a', kind: 'identity' },
+    { key: 'equiv', act: 'Equivalente a', pas: 'Equivalente a', kind: 'contemp' },
+    { key: 'incierta', act: 'Relación incierta', pas: 'Relación incierta', kind: 'none' }
+  ];
+  var REL = {};
+  RELS.forEach(function (r) { REL[r.key] = r; r.order = r.kind === 'order'; r.sym = r.kind !== 'order'; });
+
+  var TYPES = ['Depósito', 'Relleno', 'Corte', 'Estructura', 'Arrasamiento', 'Superficie'];
+  var TYPE_NOTE = {
+    'Depósito': 'Capa, piso, nivelación, derrumbe, vertido',
+    'Relleno': 'Depósito dentro de un corte',
+    'Corte': 'Interfaz negativa: fosa, zanja, hoyo de poste, tumba, zanja de cimiento o de expolio',
+    'Estructura': 'Muro, mampostería, adobe, tapia, elemento de madera',
+    'Arrasamiento': 'Interfaz horizontal: nivel al que se arrasó o expolió un muro',
+    'Superficie': 'Interfaz de capa o de uso, solo si se numera aparte'
+  };
+  var TYPE_ALIAS = {
+    'deposito': 'Depósito', 'capa': 'Depósito', 'estrato': 'Depósito',
+    'relleno': 'Relleno',
+    'corte': 'Corte', 'interfaz negativa': 'Corte', 'interfaz': 'Corte', 'fosa': 'Corte', 'zanja': 'Corte',
+    'estructura': 'Estructura', 'muro': 'Estructura', 'deposito vertical': 'Estructura', 'uem': 'Estructura', 'mamposteria': 'Estructura',
+    'arrasamiento': 'Arrasamiento', 'interfaz de arrasamiento': 'Arrasamiento', 'interfaz horizontal': 'Arrasamiento',
+    'superficie': 'Superficie', 'superficie de uso': 'Superficie', 'interfaz de capa': 'Superficie'
+  };
+
+  // Qué admite cada tipo como sujeto (act) y como objeto (pas): 'si', 'aviso' o 'no'.
+  function defaultRules() {
+    function row(act, pas) {
+      var keys = ['cubre', 'corta', 'rellena', 'apoya', 'une'];
+      var o = { act: {}, pas: {} };
+      keys.forEach(function (k, i) { o.act[k] = act[i]; o.pas[k] = pas[i]; });
+      ['igual', 'equiv', 'incierta'].forEach(function (k) { o.act[k] = 'si'; o.pas[k] = 'si'; });
+      return o;
+    }
+    //                     cubre    corta   rellena  apoya    une            cubierto cortado  rellenado se le apoya  se une
+    return {
+      'Depósito':     row(['si',   'no',   'aviso', 'aviso', 'no'],        ['si',    'si',    'no',     'aviso',    'no']),
+      'Relleno':      row(['si',   'no',   'si',    'aviso', 'no'],        ['si',    'si',    'no',     'aviso',    'no']),
+      'Corte':        row(['no',   'si',   'no',    'no',    'no'],        ['si',    'aviso', 'si',     'no',       'no']),
+      'Estructura':   row(['si',   'no',   'aviso', 'si',    'si'],        ['si',    'si',    'no',     'si',       'si']),
+      'Arrasamiento': row(['no',   'si',   'no',    'no',    'no'],        ['si',    'aviso', 'aviso',  'no',       'no']),
+      'Superficie':   row(['si',   'no',   'no',    'no',    'no'],        ['si',    'si',    'no',     'aviso',    'no'])
+    };
+  }
+  function normRule(v) { return v === true ? 'si' : v === false ? 'no' : (v === 'si' || v === 'aviso' || v === 'no') ? v : 'si'; }
+
+  // Por qué, en las combinaciones que no son "sí". Clave: lado|relación|tipo, o lado|relación|* para todos.
+  var WHY = {
+    'act|corta|*': 'solo un corte corta.',
+    'pas|corta|Corte': 'un corte que corta otro corte. Mejor relacionarlo con su relleno, si queda.',
+    'pas|corta|Arrasamiento': 'normalmente se relaciona con lo que cubre el arrasamiento.',
+    'pas|rellena|*': 'solo se rellena un corte.',
+    'pas|rellena|Arrasamiento': 'si es una zanja de expolio, numérala como Corte.',
+    'act|rellena|Depósito': 'si rellena un corte, debería ser Relleno.',
+    'act|rellena|Estructura': 'posible si es un cimiento; revísalo.',
+    'act|rellena|*': 'ese tipo no rellena.',
+    'act|apoya|Depósito': 'un depósito apoyado: válido para un piso contra un muro, según el manual.',
+    'act|apoya|Relleno': 'un relleno apoyado: revísalo.',
+    'act|apoya|*': 'ese tipo no se apoya.',
+    'pas|apoya|*': 'normalmente se apoya en una estructura.',
+    'pas|apoya|Corte': 'nada se apoya en un corte.',
+    'act|une|*': 'solo se unen estructuras.',
+    'pas|une|*': 'solo se unen estructuras.',
+    'act|cubre|Corte': 'un corte no cubre; cubre su relleno.',
+    'act|cubre|Arrasamiento': 'un arrasamiento no cubre; corta el muro.',
+    'act|cubre|*': 'ese tipo no cubre.'
+  };
+  function why(side, rel, tipo) { return WHY[side + '|' + rel + '|' + tipo] || WHY[side + '|' + rel + '|*'] || ''; }
+
+  function norm(s) {
+    return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase().replace(/[^a-z0-9#]+/g, ' ').trim();
+  }
+  function clean(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+  function canonType(t) { var c = clean(t); if (!c) return ''; return TYPE_ALIAS[norm(c)] || c; }
+
+  function parseDepth(s) {
+    var m = clean(s).replace(/,/g, '.').match(/(-?\d+(?:\.\d+)?)\s*(?:-|–|—|a|hasta)\s*(-?\d+(?:\.\d+)?)/i);
+    if (!m) return null;
+    return { from: parseFloat(m[1]), to: parseFloat(m[2]) };
+  }
+  function parseNum(s) {
+    var m = clean(s).replace(/,/g, '.').match(/-?\d+(?:\.\d+)?/);
+    return m ? parseFloat(m[0]) : null;
+  }
+
+  // "2, 5?, 6~, UE2:3, n/o": ? = dudosa; ~ = sin implicación temporal (solo para Se apoya)
+  function parseRefs(cell, corte) {
+    var out = { refs: [], notObserved: false, bad: [] };
+    var txt = clean(cell);
+    if (!txt) return out;
+    txt.split(/[,;]+/).forEach(function (tok) {
+      tok = clean(tok);
+      if (!tok) return;
+      if (/^(n\s*\/\s*o|no\s*obs.*|no observad[oa])$/i.test(tok)) { out.notObserved = true; return; }
+      var inferred = false, noOrder = false, m;
+      while ((m = tok.match(/[?~]$/))) {
+        if (m[0] === '?') inferred = true; else noOrder = true;
+        tok = clean(tok.slice(0, -1));
+      }
+      var c = corte, n = tok;
+      m = tok.match(/^(.+?)\s*:\s*(.+)$/);
+      if (m) { c = clean(m[1]); n = clean(m[2]); }
+      n = n.replace(/^(ue|e)\s*(?=\d)/i, '');
+      if (!n || /\s/.test(n)) { out.bad.push(tok); return; }
+      out.refs.push({ id: uid(c, n), inferred: inferred, noOrder: noOrder });
+    });
+    return out;
+  }
+
+  function uid(corte, n) { return clean(corte) + ':' + clean(n); }
+
+  var ACTIVE = ['cubre', 'corta', 'rellena', 'apoya', 'une', 'igual', 'equiv', 'incierta'];
+  var PASSIVE = { cubierto: 'cubre', cortado: 'corta', rellenado: 'rellena', seLeApoya: 'apoya' };
+  var TEXT_FIELDS = ['ubic', 'prof', 'grosor', 'tipo', 'desc', 'color', 'consist', 'comp', 'mat'];
+
+  function emptyRow(corte, n) {
+    var r = { corte: corte || '', n: n == null ? '' : String(n) };
+    TEXT_FIELDS.concat(ACTIVE).concat(Object.keys(PASSIVE)).forEach(function (k) { r[k] = ''; });
+    return r;
+  }
+
+  function rowHasData(r) {
+    return ACTIVE.concat(Object.keys(PASSIVE)).concat(['prof', 'grosor', 'desc', 'color', 'consist', 'comp', 'mat', 'ubic'])
+      .some(function (k) { return clean(r[k]) !== ''; });
+  }
+
+  /* ---------- lectura de lo pegado desde la hoja ---------- */
+
+  function parseTSV(text) {
+    var rows = [], row = [], cell = '', q = false, i = 0, ch;
+    text = String(text).replace(/\r\n?/g, '\n');
+    while (i < text.length) {
+      ch = text[i];
+      if (q) {
+        if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+        else cell += ch;
+      } else if (ch === '"' && cell === '') q = true;
+      else if (ch === '\t') { row.push(cell); cell = ''; }
+      else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+      else cell += ch;
+      i++;
+    }
+    row.push(cell);
+    if (row.length > 1 || row[0] !== '') rows.push(row);
+    return rows;
+  }
+
+  var HEADER_MAP = [
+    ['n', ['#', 'n', 'no', 'num', 'numero', 'estrato', 'ue', 'unidad']],
+    ['corte', ['corte']],
+    ['ubic', ['ubicacion']],
+    ['prof', ['profundidad cm', 'profundidad']],
+    ['grosor', ['grosor cm', 'grosor']],
+    ['tipo', ['tipo']],
+    ['cubre', ['cubre']],
+    ['cubierto', ['cubierto', 'cubierto por']],
+    ['corta', ['corta']],
+    ['cortado', ['cortado', 'cortado por']],
+    ['rellena', ['rellena']],
+    ['rellenado', ['rellenado', 'rellenado por']],
+    ['apoya', ['se apoya', 'se apoya en']],
+    ['seLeApoya', ['se le apoya']],
+    ['une', ['se une', 'se une a']],
+    ['igual', ['igual', 'igual a']],
+    ['equiv', ['equivalente', 'equivalente a']],
+    ['incierta', ['incierta', 'relacion incierta']],
+    ['desc', ['descripcion']],
+    ['color', ['color']],
+    ['consist', ['consistencia']],
+    ['comp', ['composicion']],
+    ['mat', ['materiales presentes', 'materiales']]
+  ];
+
+  function importTable(text) {
+    var grid = parseTSV(text);
+    var res = { rows: [], error: '', skipped: 0 };
+    var h = -1, i, j;
+    for (i = 0; i < Math.min(grid.length, 10); i++) {
+      var names = grid[i].map(norm);
+      if (names.indexOf('corte') >= 0 && names.indexOf('cubre') >= 0) { h = i; break; }
+    }
+    if (h < 0) {
+      res.error = 'No encuentro la fila de títulos. Copia también la fila que dice CORTE, TIPO, Cubre…';
+      return res;
+    }
+    var head = grid[h].map(norm), col = {};
+    HEADER_MAP.forEach(function (pair) {
+      for (j = 0; j < head.length; j++) {
+        if (pair[1].indexOf(head[j]) >= 0 && col[pair[0]] == null) col[pair[0]] = j;
+      }
+    });
+    if (col.n == null) {
+      for (j = 0; j < head.length; j++) { if (head[j] === '') { col.n = j; break; } }
+    }
+    if (col.n == null) { res.error = 'No encuentro la columna con el número del estrato.'; return res; }
+    for (i = h + 1; i < grid.length; i++) {
+      var g = grid[i], r = emptyRow('', '');
+      Object.keys(col).forEach(function (k) { r[k] = clean(g[col[k]]); });
+      Object.keys(PASSIVE).concat(ACTIVE).forEach(function (k) { if (/^not found$/i.test(r[k])) r[k] = ''; });
+      r.tipo = canonType(r.tipo);
+      if (!r.n || !rowHasData(r)) { res.skipped++; continue; }
+      res.rows.push(r);
+    }
+    if (!res.rows.length) res.error = 'Encontré los títulos, pero ninguna fila con datos.';
+    return res;
+  }
+
+  function exportTable(rows) {
+    var head = ['', 'CORTE', 'UBICACIÓN', 'PROFUNDIDAD (CM)', 'GROSOR (CM)', 'TIPO', 'Cubre', 'Corta', 'Rellena',
+      'Se apoya', 'Se une', 'Igual a', 'Equivalente', 'Relación incierta', 'DESCRIPCIÓN', 'COLOR', 'CONSISTENCIA', 'COMPOSICIÓN', 'MATERIALES PRESENTES'];
+    var keys = ['n', 'corte', 'ubic', 'prof', 'grosor', 'tipo', 'cubre', 'corta', 'rellena', 'apoya', 'une', 'igual', 'equiv', 'incierta',
+      'desc', 'color', 'consist', 'comp', 'mat'];
+    var lines = [head.join('\t')];
+    rows.forEach(function (r) {
+      lines.push(keys.map(function (k) { return clean(r[k]).replace(/\t/g, ' '); }).join('\t'));
+    });
+    return lines.join('\n');
+  }
+
+  // Filas guardadas con la versión anterior
+  function migrateRow(r) {
+    var o = emptyRow(r.corte, r.n);
+    Object.keys(o).forEach(function (k) { if (r[k] != null) o[k] = String(r[k]); });
+    o.tipo = canonType(o.tipo);
+    return o;
+  }
+  function migrateRules(saved) {
+    var base = defaultRules();
+    if (!saved || typeof saved !== 'object') return base;
+    TYPES.forEach(function (t) {
+      if (!saved[t]) return;
+      ['act', 'pas'].forEach(function (side) {
+        ACTIVE.forEach(function (k) { if (saved[t][side] && saved[t][side][k] != null) base[t][side][k] = normRule(saved[t][side][k]); });
+      });
+    });
+    return base;
+  }
+
+  /* ---------- análisis ---------- */
+
+  function analyse(rows, rules) {
+    rules = rules || defaultRules();
+    var problems = [], units = {}, order = [], edges = [], info = { notObserved: 0, ignored: 0, noOrder: 0, uncertain: 0 };
+    function add(sev, code, msg, ids) { problems.push({ sev: sev, code: code, msg: msg, units: ids || [] }); }
+
+    var cortes = {};
+    rows.forEach(function (r) { if (clean(r.n) && rowHasData(r)) cortes[clean(r.corte)] = 1; });
+    var manyCortes = Object.keys(cortes).length > 1;
+    function label(id) {
+      var p = id.indexOf(':'), c = id.slice(0, p), n = id.slice(p + 1);
+      return manyCortes && c ? c + '·' + n : 'E' + n;
+    }
+
+    // 1. unidades
+    rows.forEach(function (r, idx) {
+      var n = clean(r.n);
+      if (!n) { if (rowHasData(r)) add('error', 'sin-numero', 'La fila ' + (idx + 1) + ' tiene datos pero no tiene número.', []); return; }
+      if (!rowHasData(r)) { info.ignored++; return; }
+      var id = uid(r.corte, n);
+      if (units[id]) { add('error', 'duplicada', label(id) + ' aparece dos veces en el mismo corte.', [id]); return; }
+      units[id] = {
+        id: id, corte: clean(r.corte), n: n, tipo: canonType(r.tipo), depth: parseDepth(r.prof), grosor: parseNum(r.grosor),
+        row: r, idx: idx, label: '', out: [], inc: []
+      };
+      order.push(id);
+    });
+    order.forEach(function (id) { units[id].label = label(id); });
+
+    // 2. relaciones declaradas
+    var seen = {};
+    order.forEach(function (id) {
+      var u = units[id];
+      ACTIVE.forEach(function (k) {
+        var p = parseRefs(u.row[k], u.corte);
+        if (p.notObserved) info.notObserved++;
+        p.bad.forEach(function (t) {
+          add('error', 'ilegible', u.label + ', ' + REL[k].act + ': no entiendo "' + t + '".', [id]);
+        });
+        p.refs.forEach(function (ref) {
+          if (ref.id === id) { add('error', 'propia', u.label + ' se relaciona consigo misma (' + REL[k].act + ').', [id]); return; }
+          if (!units[ref.id]) {
+            add('error', 'no-existe', u.label + ' ' + REL[k].act.toLowerCase() + ' ' + label(ref.id) + ', que no está en la tabla.', [id]);
+            return;
+          }
+          if (ref.noOrder && !REL[k].defeasible) {
+            add('aviso', 'tilde', u.label + ', ' + REL[k].act + ': ~ solo vale en «Se apoya».', [id]);
+          }
+          var a = id, b = ref.id;
+          var sig = REL[k].order ? k + '|' + a + '|' + b : k + '|' + (a < b ? a + '|' + b : b + '|' + a);
+          if (seen[sig]) {
+            if (!ref.inferred) seen[sig].inferred = false;
+            if (!ref.noOrder) seen[sig].noOrder = false;
+            return;
+          }
+          var e = { from: a, to: b, rel: k, inferred: ref.inferred, noOrder: !!(ref.noOrder && REL[k].defeasible) };
+          seen[sig] = e; edges.push(e);
+          units[a].out.push(e); units[b].inc.push(e);
+        });
+      });
+    });
+    function givesOrder(e) { return REL[e.rel].order && !e.noOrder; }
+    edges.forEach(function (e) {
+      if (e.noOrder) info.noOrder++;
+      if (e.rel === 'incierta') info.uncertain++;
+    });
+
+    // 3. columnas pasivas pegadas: deben coincidir con lo que dice la otra fila
+    order.forEach(function (id) {
+      var u = units[id];
+      Object.keys(PASSIVE).forEach(function (pk) {
+        var k = PASSIVE[pk];
+        parseRefs(u.row[pk], u.corte).refs.forEach(function (ref) {
+          if (!units[ref.id]) {
+            add('error', 'no-existe', u.label + ' dice "' + REL[k].pas.toLowerCase() + ' ' + label(ref.id) + '", que no está en la tabla.', [id]);
+            return;
+          }
+          if (!seen[k + '|' + ref.id + '|' + id]) {
+            add('error', 'reciprocidad', u.label + ' dice "' + REL[k].pas.toLowerCase() + ' ' + label(ref.id) + '", pero ' +
+              label(ref.id) + ' no dice "' + REL[k].act.toLowerCase() + ' ' + u.label + '".', [id, ref.id]);
+          }
+        });
+      });
+    });
+
+    // 4. reglas por tipo
+    function sevOf(v) { return v === 'no' ? 'error' : v === 'aviso' ? 'aviso' : null; }
+    edges.forEach(function (e) {
+      var a = units[e.from], b = units[e.to], ra = rules[a.tipo], rb = rules[b.tipo], s, w;
+      var verb = REL[e.rel].act.toLowerCase();
+      if (ra && (s = sevOf(normRule(ra.act[e.rel])))) {
+        w = why('act', e.rel, a.tipo);
+        add(s, 'tipo', a.label + ' (' + a.tipo + ') ' + verb + ' ' + b.label + ': ' + (w || 'ese tipo no admite «' + REL[e.rel].act + '».'), [a.id, b.id]);
+      }
+      var bside = REL[e.rel].sym ? 'act' : 'pas';
+      if (rb && (s = sevOf(normRule(rb[bside][e.rel])))) {
+        w = why(bside, e.rel, b.tipo);
+        add(s, 'tipo', a.label + ' ' + verb + ' ' + b.label + ' (' + b.tipo + '): ' + (w || 'ese tipo no admite «' + REL[e.rel][bside] + '».'), [b.id, a.id]);
+      }
+      if ((e.rel === 'igual' || e.rel === 'equiv') && a.tipo && b.tipo && a.tipo !== b.tipo) {
+        add('aviso', 'tipo-distinto', a.label + ' y ' + b.label + ': «' +
+          REL[e.rel].act.toLowerCase() + '» pero de tipos distintos.', [a.id, b.id]);
+      }
+    });
+    order.forEach(function (id) {
+      var u = units[id];
+      if (!u.tipo) add('aviso', 'sin-tipo', u.label + ' no tiene tipo.', [id]);
+      else if (!rules[u.tipo]) add('aviso', 'tipo-desconocido', u.label + ' tiene un tipo sin reglas: "' + u.tipo + '".', [id]);
+    });
+
+    // 5. Igual a: la misma unidad, comparten casilla
+    var parent = {};
+    order.forEach(function (id) { parent[id] = id; });
+    function find(x) { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; }
+    edges.forEach(function (e) { if (REL[e.rel].kind === 'identity') parent[find(e.from)] = find(e.to); });
+    var classes = {}, classOrder = [];
+    order.forEach(function (id) {
+      var c = find(id);
+      if (!classes[c]) { classes[c] = { id: c, members: [], out: {}, inc: {}, bad: false }; classOrder.push(c); }
+      classes[c].members.push(id);
+    });
+    function clsLabel(c) { return classes[c].members.map(function (m) { return units[m].label; }).join(' = '); }
+
+    // 6. orden entre clases
+    var cedges = {};
+    edges.forEach(function (e) {
+      if (!givesOrder(e)) return;
+      var a = find(e.from), b = find(e.to);
+      if (a === b) {
+        add('error', 'contradiccion', units[e.from].label + ' y ' + units[e.to].label +
+          ' son «igual a» y además ' + units[e.from].label + ' ' + REL[e.rel].act.toLowerCase() + ' ' + units[e.to].label + '.',
+          [e.from, e.to]);
+        return;
+      }
+      var key = a + '>' + b;
+      if (!cedges[key]) cedges[key] = { from: a, to: b, inferred: true, src: [] };
+      if (!e.inferred) cedges[key].inferred = false;
+      cedges[key].src.push(e);
+    });
+    var clist = Object.keys(cedges).map(function (k) { return cedges[k]; });
+    clist.forEach(function (e) { classes[e.from].out[e.to] = e; classes[e.to].inc[e.from] = e; });
+
+    // 7. bucles (componentes fuertemente conexas, Tarjan)
+    var index = 0, stack = [], onStack = {}, idx = {}, low = {}, sccOf = {}, sccs = [];
+    function strong(v) {
+      idx[v] = low[v] = index++; stack.push(v); onStack[v] = true;
+      Object.keys(classes[v].out).forEach(function (w) {
+        if (idx[w] == null) { strong(w); low[v] = Math.min(low[v], low[w]); }
+        else if (onStack[w]) low[v] = Math.min(low[v], idx[w]);
+      });
+      if (low[v] === idx[v]) {
+        var comp = [], w;
+        do { w = stack.pop(); onStack[w] = false; comp.push(w); sccOf[w] = sccs.length; } while (w !== v);
+        sccs.push(comp);
+      }
+    }
+    classOrder.forEach(function (c) { if (idx[c] == null) strong(c); });
+    sccs.forEach(function (comp) {
+      if (comp.length < 2) return;
+      var inComp = {};
+      comp.forEach(function (c) { inComp[c] = true; classes[c].bad = true; });
+      var start = comp[0], path = [start], seenC = {}, cur = start, guard = 0;
+      seenC[start] = true;
+      while (guard++ < 1000) {
+        var nexts = Object.keys(classes[cur].out).filter(function (w) { return inComp[w]; });
+        var nx = nexts.filter(function (w) { return w === start; })[0] ||
+          nexts.filter(function (w) { return !seenC[w]; })[0] || nexts[0];
+        path.push(nx);
+        if (nx === start) break;
+        if (seenC[nx]) { path = path.slice(path.indexOf(nx)); break; }
+        seenC[nx] = true; cur = nx;
+      }
+      var ids = [], viaApoya = false;
+      comp.forEach(function (c) {
+        ids = ids.concat(classes[c].members);
+        Object.keys(classes[c].out).forEach(function (w) {
+          if (inComp[w]) classes[c].out[w].src.forEach(function (e) { if (e.rel === 'apoya') viaApoya = true; });
+        });
+      });
+      add('error', 'bucle', 'Bucle: ' + path.map(clsLabel).join(' → ') + '.' +
+        (viaApoya ? ' Pasa por un «se apoya»: si no implica orden, márcalo con ~.' : ''), ids);
+    });
+
+    // 8. grafo sin bucles
+    var dag = clist.filter(function (e) { return sccOf[e.from] !== sccOf[e.to]; });
+    var succ = {}, pred = {};
+    classOrder.forEach(function (c) { succ[c] = []; pred[c] = []; });
+    dag.forEach(function (e) { succ[e.from].push(e.to); pred[e.to].push(e.from); });
+    function reaches(a, b, skipDirect) {
+      var st = succ[a].filter(function (w) { return !(skipDirect && w === b); }), vis = {};
+      while (st.length) {
+        var v = st.pop();
+        if (v === b) return true;
+        if (vis[v]) continue;
+        vis[v] = true;
+        succ[v].forEach(function (w) { st.push(w); });
+      }
+      return false;
+    }
+
+    // 9. relaciones redundantes (reducción transitiva)
+    var reduced = [], redundant = [];
+    dag.forEach(function (e) { (reaches(e.from, e.to, true) ? redundant : reduced).push(e); });
+    var redundantNonFill = redundant.filter(function (e) { return !e.src.every(function (s) { return s.rel === 'rellena'; }); });
+    if (redundant.length) {
+      var fillOnly = redundant.length - redundantNonFill.length;
+      add('info', 'redundante', redundant.length + (redundant.length === 1 ? ' relación se deduce de otras y no se dibuja' : ' relaciones se deducen de otras y no se dibujan') +
+        (fillOnly ? ' (' + fillOnly + ' de rellenos superiores, lo normal)' : '') +
+        (redundantNonFill.length ? ': ' + redundantNonFill.slice(0, 6).map(function (e) { return clsLabel(e.from) + ' sobre ' + clsLabel(e.to); }).join('; ') + (redundantNonFill.length > 6 ? '…' : '') : '') + '.', []);
+    }
+
+    // 10. vínculos sin orden: Se une y Equivalente a. Si hay un camino de orden entre los dos, es contradictorio.
+    var links = [], linkSeen = {};
+    edges.forEach(function (e) {
+      if (REL[e.rel].kind !== 'contemp') return;
+      var a = find(e.from), b = find(e.to);
+      if (a === b) return;
+      var key = e.rel + '|' + (a < b ? a + '|' + b : b + '|' + a);
+      if (linkSeen[key]) return;
+      linkSeen[key] = true;
+      links.push({ a: a, b: b, rel: e.rel, inferred: e.inferred });
+      if (!classes[a].bad && !classes[b].bad && (reaches(a, b) || reaches(b, a))) {
+        var later = reaches(a, b) ? a : b, earlier = later === a ? b : a;
+        add('error', 'contemporaneas', units[e.from].label + ' y ' + units[e.to].label + ': «' + REL[e.rel].act.toLowerCase() + '», pero la secuencia pone ' +
+          clsLabel(later) + ' después de ' + clsLabel(earlier) + '.', [e.from, e.to]);
+      }
+    });
+
+    // 11. rellenos y cortes
+    order.forEach(function (id) {
+      var u = units[id];
+      if (u.tipo !== 'Relleno') return;
+      var tg = {};
+      u.out.forEach(function (e) { if (e.rel === 'rellena') tg[e.to] = 1; });
+      var n = Object.keys(tg).length;
+      if (!n) add('aviso', 'relleno-sin-corte', u.label + ' es Relleno pero no dice qué corte rellena.', [id]);
+      else if (n > 1) add('aviso', 'relleno-varios', u.label + ' rellena ' + n + ' cortes (' + Object.keys(tg).map(label).join(', ') + ').', [id]);
+    });
+    order.forEach(function (id) {
+      var u = units[id], fills = {};
+      u.inc.forEach(function (e) { if (e.rel === 'rellena') fills[find(e.from)] = 1; });
+      var f = Object.keys(fills);
+      if (f.length < 2) return;
+      var loose = [];
+      for (var i = 0; i < f.length; i++) for (var j = i + 1; j < f.length; j++) {
+        if (classes[f[i]].bad || classes[f[j]].bad) continue;
+        if (!reaches(f[i], f[j]) && !reaches(f[j], f[i])) loose.push(clsLabel(f[i]) + ' y ' + clsLabel(f[j]));
+      }
+      if (loose.length) add('aviso', 'rellenos-sin-orden', 'Rellenos de ' + u.label + ' sin orden entre sí: ' + loose.slice(0, 4).join('; ') +
+        (loose.length > 4 ? '…' : '') + '. Falta «Cubre» entre ellos.', [id]);
+    });
+
+    // 12. profundidad: solo entre depósitos horizontales en contacto directo y en el mismo corte
+    edges.forEach(function (e) {
+      if (e.rel !== 'cubre') return;
+      var a = units[e.from], b = units[e.to];
+      if (a.tipo !== 'Depósito' || b.tipo !== 'Depósito') return;
+      if (a.corte !== b.corte || !a.depth || !b.depth) return;
+      if (a.depth.from >= b.depth.to) {
+        add('error', 'profundidad', a.label + ' cubre a ' + b.label + ', pero empieza a ' + a.depth.from + ' cm y ' +
+          b.label + ' termina a ' + b.depth.to + ' cm.', [a.id, b.id]);
+      } else if (a.depth.from > b.depth.from) {
+        add('aviso', 'profundidad', a.label + ' cubre a ' + b.label + ', pero empieza más abajo (' + a.depth.from + ' cm frente a ' +
+          b.depth.from + ' cm). ¿Inclinado?', [a.id, b.id]);
+      }
+    });
+    order.forEach(function (id) {
+      var u = units[id];
+      if (u.depth && u.depth.to < u.depth.from) add('error', 'profundidad', u.label + ': la profundidad final es menor que la inicial.', [id]);
+      if (u.depth && u.grosor != null && Math.abs((u.depth.to - u.depth.from) - u.grosor) > 0.5) {
+        add('aviso', 'grosor', u.label + ': el grosor anotado es ' + u.grosor + ' cm y la profundidad da ' + (u.depth.to - u.depth.from) + ' cm.', [id]);
+      }
+    });
+
+    // 13. sin relaciones de orden
+    var linked = {};
+    links.forEach(function (l) { linked[l.a] = 1; linked[l.b] = 1; });
+    var anyRel = {};
+    edges.forEach(function (e) { anyRel[e.from] = 1; anyRel[e.to] = 1; });
+    var lonely = classOrder.filter(function (c) { return !succ[c].length && !pred[c].length && !classes[c].bad; });
+    lonely.forEach(function (c) {
+      var some = classes[c].members.some(function (m) { return anyRel[m]; });
+      if (!some) add('aviso', 'suelta', clsLabel(c) + ' no tiene ninguna relación.', classes[c].members);
+      else add('aviso', 'sin-orden', clsLabel(c) + ' no tiene ninguna relación de orden.', classes[c].members);
+    });
+    if (info.notObserved) add('info', 'no-observado', info.notObserved + (info.notObserved === 1 ? ' casilla marcada' : ' casillas marcadas') + ' como no observada (n/o).', []);
+    if (info.noOrder) add('info', 'apoyo-sin-orden', info.noOrder + ' «se apoya» con ~, sin orden.', []);
+    if (info.uncertain) add('info', 'incierta', info.uncertain + (info.uncertain === 1 ? ' relación incierta, sin dibujar.' : ' relaciones inciertas, sin dibujar.'), []);
+
+    var sevRank = { error: 0, aviso: 1, info: 2 };
+    problems.sort(function (a, b) { return sevRank[a.sev] - sevRank[b.sev]; });
+
+    return {
+      units: units, order: order, edges: edges, classes: classes, classOrder: classOrder,
+      reduced: reduced, redundant: redundant, succ: succ, pred: pred, lonely: lonely, links: links, problems: problems,
+      counts: {
+        units: order.length, relations: edges.length,
+        errors: problems.filter(function (p) { return p.sev === 'error'; }).length,
+        warnings: problems.filter(function (p) { return p.sev === 'aviso'; }).length
+      },
+      clsLabel: clsLabel, classOf: find, label: label
+    };
+  }
+
+  /* ---------- dibujo: capas, de lo más reciente arriba a lo más antiguo abajo ---------- */
+
+  function layout(A, opt) {
+    opt = opt || {};
+    var BW = opt.boxW || 74, BH = opt.boxH || 34, GX = opt.gapX || 22, GY = opt.gapY || 46, PAD = 18;
+    var lonely = {};
+    A.lonely.forEach(function (c) { lonely[c] = true; });
+    var nodes = A.classOrder.filter(function (c) { return !lonely[c]; });
+    var layer = {}, memo = {};
+    function depthOf(c) {
+      if (memo[c] != null) return memo[c];
+      var d = 0;
+      A.pred[c].forEach(function (p) { d = Math.max(d, depthOf(p) + 1); });
+      memo[c] = d; return d;
+    }
+    nodes.forEach(function (c) { layer[c] = depthOf(c); });
+    // una unidad sin nada encima baja hasta justo encima de lo que cubre
+    function minSucc(c) { var m = Infinity; A.succ[c].forEach(function (w) { if (layer[w] != null) m = Math.min(m, layer[w]); }); return m; }
+    nodes.forEach(function (c) { if (!A.pred[c].length && A.succ[c].length) layer[c] = Math.max(layer[c], minSucc(c) - 1); });
+    // las unidas y las equivalentes, a la misma altura cuando el orden lo permite
+    for (var it = 0; it < 4; it++) {
+      A.links.forEach(function (lk) {
+        if (layer[lk.a] == null || layer[lk.b] == null || layer[lk.a] === layer[lk.b]) return;
+        var hi = layer[lk.a] < layer[lk.b] ? lk.a : lk.b, lo = hi === lk.a ? lk.b : lk.a;
+        if (minSucc(hi) > layer[lo]) layer[hi] = layer[lo];
+      });
+    }
+    var maxL = 0;
+    nodes.forEach(function (c) { maxL = Math.max(maxL, layer[c]); });
+
+    var width = {};
+    nodes.forEach(function (c) { width[c] = Math.max(BW, 18 + A.clsLabel(c).length * 8.2); });
+
+    var layers = [], i;
+    for (i = 0; i <= maxL; i++) layers.push([]);
+    nodes.forEach(function (c) { layers[layer[c]].push(c); });
+    var up = {}, down = {}, chains = [], dn = 0;
+    function link(a, b) { (down[a] = down[a] || []).push(b); (up[b] = up[b] || []).push(a); }
+    A.reduced.forEach(function (e) {
+      var chain = [e.from], l;
+      for (l = layer[e.from] + 1; l < layer[e.to]; l++) {
+        var d = '~' + (dn++);
+        layer[d] = l; width[d] = 6; layers[l].push(d); chain.push(d);
+      }
+      chain.push(e.to);
+      for (l = 0; l < chain.length - 1; l++) link(chain[l], chain[l + 1]);
+      chains.push({ edge: e, chain: chain });
+    });
+    // los vínculos sin orden también acercan las cajas
+    var side = {};
+    A.links.forEach(function (lk) {
+      if (lonely[lk.a] || lonely[lk.b]) return;
+      (side[lk.a] = side[lk.a] || []).push(lk.b); (side[lk.b] = side[lk.b] || []).push(lk.a);
+    });
+
+    var pos = {};
+    layers.forEach(function (L) { L.forEach(function (c, k) { pos[c] = k; }); });
+    function sweep(L, nb) {
+      var keyed = L.map(function (c, k) {
+        var ns = (nb[c] || []).concat(side[c] || []);
+        var b = ns.length ? ns.reduce(function (s, x) { return s + pos[x]; }, 0) / ns.length : pos[c];
+        return { c: c, b: b, k: k };
+      });
+      keyed.sort(function (x, y) { return x.b - y.b || x.k - y.k; });
+      keyed.forEach(function (o, k) { L[k] = o.c; pos[o.c] = k; });
+    }
+    for (var pass = 0; pass < 6; pass++) {
+      for (i = 1; i < layers.length; i++) sweep(layers[i], up);
+      for (i = layers.length - 2; i >= 0; i--) sweep(layers[i], down);
+    }
+
+    var X = {}, Y = {}, totalW;
+    var rowW = layers.map(function (L) {
+      return L.reduce(function (s, c) { return s + width[c]; }, 0) + GX * Math.max(0, L.length - 1);
+    });
+    totalW = Math.max.apply(null, rowW.concat([BW]));
+    layers.forEach(function (L, li) {
+      var x = PAD + (totalW - rowW[li]) / 2;
+      L.forEach(function (c) { X[c] = x + width[c] / 2; Y[c] = PAD + li * (BH + GY); x += width[c] + GX; });
+    });
+    for (pass = 0; pass < 4; pass++) {
+      layers.forEach(function (L) {
+        L.forEach(function (c, k) {
+          var ns = (up[c] || []).concat(down[c] || []);
+          if (!ns.length) return;
+          var want = ns.reduce(function (s, x) { return s + X[x]; }, 0) / ns.length;
+          var lo = k > 0 ? X[L[k - 1]] + width[L[k - 1]] / 2 + GX + width[c] / 2 : PAD + width[c] / 2;
+          var hi = k < L.length - 1 ? X[L[k + 1]] - width[L[k + 1]] / 2 - GX - width[c] / 2 : PAD + totalW - width[c] / 2;
+          if (lo <= hi) X[c] = Math.min(hi, Math.max(lo, want));
+        });
+      });
+    }
+
+    var boxes = nodes.map(function (c) {
+      return {
+        id: c, members: A.classes[c].members, label: A.clsLabel(c), bad: A.classes[c].bad,
+        x: X[c] - width[c] / 2, y: Y[c], w: width[c], h: BH, cx: X[c]
+      };
+    });
+    var paths = chains.map(function (ch) {
+      var pts = [], k;
+      for (k = 0; k < ch.chain.length; k++) {
+        var c = ch.chain[k];
+        if (k === 0) pts.push([X[c], Y[c] + BH]);
+        else if (k === ch.chain.length - 1) pts.push([X[c], Y[c]]);
+        else { pts.push([X[c], Y[c]]); pts.push([X[c], Y[c] + BH]); }
+      }
+      var d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+      for (k = 1; k < pts.length; k++) {
+        var p = pts[k - 1], q = pts[k];
+        if (Math.abs(p[0] - q[0]) < 0.5) d += ' L' + q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+        else {
+          var my = ((p[1] + q[1]) / 2).toFixed(1);
+          d += ' L' + p[0].toFixed(1) + ' ' + my + ' L' + q[0].toFixed(1) + ' ' + my + ' L' + q[0].toFixed(1) + ' ' + q[1].toFixed(1);
+        }
+      }
+      return { d: d, from: ch.edge.from, to: ch.edge.to, inferred: ch.edge.inferred };
+    });
+
+    var mainH = nodes.length ? PAD + (maxL + 1) * BH + maxL * GY : 0;
+    var loose = [], lx = PAD, ly = mainH + (nodes.length ? 44 : PAD + 14);
+    var looseW = Math.max(totalW, 300);
+    A.lonely.forEach(function (c) {
+      var w = Math.max(BW, 18 + A.clsLabel(c).length * 8.2);
+      if (lx + w > PAD + looseW && lx > PAD) { lx = PAD; ly += BH + 12; }
+      loose.push({ id: c, members: A.classes[c].members, label: A.clsLabel(c), bad: false, loose: true, x: lx, y: ly, w: w, h: BH, cx: lx + w / 2 });
+      lx += w + 12;
+    });
+    var all = boxes.concat(loose), byId = {};
+    all.forEach(function (b) { byId[b.id] = b; });
+
+    // líneas de vínculo: de borde a borde, en la mitad de la altura
+    var linkPaths = A.links.map(function (lk) {
+      var a = byId[lk.a], b = byId[lk.b];
+      if (!a || !b) return null;
+      var l = a.cx <= b.cx ? a : b, r = l === a ? b : a, d;
+      var ay = l.y + l.h / 2, by = r.y + r.h / 2;
+      if (r.x >= l.x + l.w) d = 'M' + (l.x + l.w).toFixed(1) + ' ' + ay.toFixed(1) + ' L' + r.x.toFixed(1) + ' ' + by.toFixed(1);
+      else {
+        var t = a.y <= b.y ? a : b, u = t === a ? b : a;
+        d = 'M' + t.cx.toFixed(1) + ' ' + (t.y + t.h).toFixed(1) + ' L' + u.cx.toFixed(1) + ' ' + u.y.toFixed(1);
+      }
+      return { d: d, a: lk.a, b: lk.b, rel: lk.rel, inferred: lk.inferred };
+    }).filter(Boolean);
+
+    var H = loose.length ? ly + BH + PAD : mainH + PAD;
+    var W = Math.max(totalW, loose.length ? looseW : 0) + PAD * 2;
+    return { boxes: all, paths: paths, links: linkPaths, width: W, height: Math.max(H, 60), looseY: loose.length ? (mainH + (nodes.length ? 30 : PAD)) : null, layers: maxL + 1 };
+  }
+
+  function around(A, c) {
+    function walk(start, nb) {
+      var out = {}, st = nb[start].slice();
+      while (st.length) { var v = st.pop(); if (out[v]) continue; out[v] = true; nb[v].forEach(function (w) { st.push(w); }); }
+      return Object.keys(out);
+    }
+    return { later: walk(c, A.pred), earlier: walk(c, A.succ) };
+  }
+
+  return {
+    RELS: RELS, REL: REL, TYPES: TYPES, TYPE_NOTE: TYPE_NOTE, ACTIVE: ACTIVE, PASSIVE: PASSIVE, defaultRules: defaultRules, normRule: normRule, why: why,
+    emptyRow: emptyRow, rowHasData: rowHasData, parseRefs: parseRefs, parseDepth: parseDepth, canonType: canonType,
+    importTable: importTable, exportTable: exportTable, migrateRow: migrateRow, migrateRules: migrateRules,
+    analyse: analyse, layout: layout, around: around, uid: uid, norm: norm
+  };
+});
+
+</script>
+<script>
+(function () {
+  'use strict';
+  var M = window.Matriz, KEY = 'matriz-estratigrafica-v1';
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function mk(corte, n, o) { var r = M.emptyRow(corte, n); Object.keys(o || {}).forEach(function (k) { r[k] = o[k]; }); return r; }
+
+  // Las filas de la hoja "Registro Estratigráfico". Las dos pestañas decían UE1; la segunda entra como UE2.
+  function mine() {
+    return [
+      mk('UE1', 1, { prof: '0-130', grosor: '130', tipo: 'Depósito', cubre: '2', desc: 'Relleno #1.', color: 'amarillo.', consist: 'Compacto.', comp: 'Suelo arenoso acompañado de piedras de diferentes tamaños.', mat: 'No.' }),
+      mk('UE1', 2, { prof: '130-150', grosor: '20', tipo: 'Depósito', desc: 'Tierra.', color: 'negro.', consist: 'Compacto.', comp: 'Tierra.', mat: 'No.' }),
+      mk('UE2', 1, { prof: '0-25', grosor: '25', tipo: 'Depósito', cubre: '2', desc: 'Relleno #1.', color: 'negro.', consist: 'Compacto.', comp: 'Tierra.', mat: 'No.' }),
+      mk('UE2', 2, { prof: '25-150', grosor: '125', tipo: 'Depósito', desc: 'Relleno #2.', color: 'amarillo.', consist: 'Compacto.', comp: 'Suelo arenoso acompañado de piedras pequeñas.', mat: 'No.' })
+    ];
+  }
+  // Sitio inventado, solo para ver una matriz con más forma.
+  function example(bad) {
+    var r = [
+      mk('C1', 1, { prof: '0-20', grosor: '20', tipo: 'Depósito', cubre: '2, 3', desc: 'Capa vegetal (ejemplo).' }),
+      mk('C1', 2, { prof: '20-70', grosor: '50', tipo: 'Relleno', rellena: '4', desc: 'Relleno de la fosa.' }),
+      mk('C1', 3, { prof: '20-35', grosor: '15', tipo: 'Depósito', cubre: '5', desc: 'Piso de tierra apisonada.' }),
+      mk('C1', 4, { tipo: 'Corte', corta: '3, 5', desc: 'Corte de la fosa.' }),
+      mk('C1', 5, { prof: '35-60', grosor: '25', tipo: 'Depósito', cubre: '6?, 7', desc: 'Nivelación.' }),
+      mk('C1', 6, { tipo: 'Estructura', cubre: '8', desc: 'Muro de adobe, tramo sur.' }),
+      mk('C1', 7, { prof: '60-80', grosor: '20', tipo: 'Depósito', cubre: '8', apoya: '6', desc: 'Derrumbe del muro.' }),
+      mk('C1', 8, { prof: '80-90', grosor: '10', tipo: 'Depósito', cubre: '10', desc: 'Piso antiguo.' }),
+      mk('C1', 9, { tipo: 'Estructura', une: '6', cubre: '8', desc: 'Muro de adobe, tramo norte, trabado con el sur.' }),
+      mk('C1', 10, { prof: '90-150', grosor: '60', tipo: 'Depósito', desc: 'Estéril.' }),
+      mk('C2', 1, { prof: '0-25', grosor: '25', tipo: 'Depósito', cubre: '2', equiv: 'C1:1', desc: 'Capa vegetal.' }),
+      mk('C2', 2, { prof: '25-55', grosor: '30', tipo: 'Depósito', cubre: '3', equiv: 'C1:5', desc: 'Nivelación.' }),
+      mk('C2', 3, { prof: '55-150', grosor: '95', tipo: 'Depósito', igual: 'C1:10', desc: 'Estéril, el mismo de C1.' })
+    ];
+    if (bad) {
+      r[9].cubre = '3';                          // bucle: el estéril cubre un piso que está encima
+      r[5].corta = '8';                          // una estructura no corta
+      r[7].grosor = '25';                        // grosor que no cuadra
+      r[2].cubre = '5, 14';                      // la 14 no existe
+      r.push(mk('C3', 1, { tipo: 'Estructura', une: '2', apoya: '2', desc: 'Pilar trabado con el muro, y además apoyado en él.' }));
+      r.push(mk('C3', 2, { tipo: 'Estructura', desc: 'Muro.' }));
+      r.push(mk('C1', 11, { prof: '40-50', tipo: 'Depósito', desc: 'Lente de ceniza sin relaciones anotadas.' }));
+      r.push(mk('C1', 12, { prof: '95-110', tipo: 'Depósito', cubre: '8', desc: 'Bolsón (profundidad contradice la relación).' }));
+      r.push(mk('C1', 13, { tipo: 'Corte', corta: '4', desc: 'Recorte de la fosa.' }));   // corte que corta un corte: aviso
+    }
+    return r;
+  }
+
+  var state = { rows: mine(), rules: M.defaultRules(), sel: null, source: 'mine' };
+  try {
+    var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (saved && Array.isArray(saved.rows) && saved.rows.length) {
+      state.rows = saved.rows.map(M.migrateRow);
+      state.rules = M.migrateRules(saved.rules);
+    }
+  } catch (e) { /* sin almacenamiento: se sigue con las filas iniciales */ }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify({ rows: state.rows, rules: state.rules })); } catch (e) { /* idem */ } }
+
+  var A = null;
+
+  /* ----- resumen ----- */
+  function renderChips() {
+    var c = A.counts, h = '';
+    h += '<span class="chip"><b>' + c.units + '</b>' + (c.units === 1 ? 'unidad' : 'unidades') + '</span>';
+    h += '<span class="chip"><b>' + c.relations + '</b>' + (c.relations === 1 ? 'relación' : 'relaciones') + '</span>';
+    h += '<span class="chip ' + (c.errors ? 'bad' : 'ok') + '"><b>' + c.errors + '</b>' + (c.errors === 1 ? 'error' : 'errores') + '</span>';
+    h += '<span class="chip ' + (c.warnings ? 'warn' : '') + '"><b>' + c.warnings + '</b>' + (c.warnings === 1 ? 'aviso' : 'avisos') + '</span>';
+    $('chips').innerHTML = h;
+  }
+
+  /* ----- matriz ----- */
+  function renderMatrix() {
+    var box = $('matrix');
+    if (!A.order.length) { box.innerHTML = '<p class="note" style="padding:14px">Tabla vacía.</p>'; return; }
+    var L = M.layout(A), near = { later: {}, earlier: {} };
+    if (state.sel && A.classes[state.sel]) {
+      var ar = M.around(A, state.sel);
+      ar.later.forEach(function (c) { near.later[c] = 1; });
+      ar.earlier.forEach(function (c) { near.earlier[c] = 1; });
+    } else state.sel = null;
+    var inSet = function (c) { return c === state.sel || near.later[c] || near.earlier[c]; };
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + Math.ceil(L.width) + '" height="' + Math.ceil(L.height) + '" viewBox="0 0 ' + Math.ceil(L.width) + ' ' + Math.ceil(L.height) + '" role="img" aria-label="Matriz estratigráfica">';
+    L.paths.forEach(function (p) {
+      var dim = state.sel && !(inSet(p.from) && inSet(p.to));
+      s += '<path class="ln' + (p.inferred ? ' inf' : '') + (dim ? ' dim' : '') + '" d="' + p.d + '"/>';
+    });
+    L.links.forEach(function (lk) {
+      var dim = state.sel && !(inSet(lk.a) && inSet(lk.b)) && lk.a !== state.sel && lk.b !== state.sel;
+      s += '<path class="lk' + (lk.rel === 'une' ? ' une' : '') + (dim ? ' dim' : '') + '" d="' + lk.d + '"/>';
+    });
+    if (L.looseY != null) s += '<text class="cap" x="18" y="' + (L.looseY + 4) + '">Sin relaciones de orden</text>';
+    L.boxes.forEach(function (b) {
+      var cls = 'bx' + (b.bad ? ' bad' : '') + (b.loose ? ' loose' : '') + (b.id === state.sel ? ' sel' : '') +
+        (near.later[b.id] ? ' later' : '') + (near.earlier[b.id] ? ' earlier' : '');
+      s += '<g class="' + cls + '" data-c="' + esc(b.id) + '" tabindex="0" role="button" aria-label="Unidad ' + esc(b.label) + '">' +
+        '<rect x="' + b.x.toFixed(1) + '" y="' + b.y.toFixed(1) + '" width="' + b.w.toFixed(1) + '" height="' + b.h + '" rx="3"/>' +
+        '<text x="' + b.cx.toFixed(1) + '" y="' + (b.y + b.h / 2 + 4.5).toFixed(1) + '" text-anchor="middle">' + esc(b.label) + '</text></g>';
+    });
+    box.innerHTML = s + '</svg>';
+    renderDetail();
+  }
+
+  function listRefs(u) {
+    var out = [];
+    M.RELS.forEach(function (R) {
+      var act = u.out.filter(function (e) { return e.rel === R.key; }).map(function (e) { return A.units[e.to].label + (e.inferred ? '?' : ''); });
+      var pas = u.inc.filter(function (e) { return e.rel === R.key; }).map(function (e) { return A.units[e.from].label + (e.inferred ? '?' : ''); });
+      if (R.key === 'apoya') {
+        act = u.out.filter(function (e) { return e.rel === 'apoya'; }).map(function (e) { return A.units[e.to].label + (e.inferred ? '?' : '') + (e.noOrder ? '~' : ''); });
+        pas = u.inc.filter(function (e) { return e.rel === 'apoya'; }).map(function (e) { return A.units[e.from].label + (e.inferred ? '?' : '') + (e.noOrder ? '~' : ''); });
+      }
+      if (!R.order) { act = act.concat(pas); pas = []; }
+      if (act.length) out.push([R.act, act.join(', ')]);
+      if (pas.length) out.push([R.pas, pas.join(', ')]);
+    });
+    return out;
+  }
+  function renderDetail() {
+    var d = $('detail');
+    if (!state.sel || !A.classes[state.sel]) { d.hidden = true; d.innerHTML = ''; return; }
+    var c = A.classes[state.sel], ar = M.around(A, state.sel), h = '';
+    c.members.forEach(function (id) {
+      var u = A.units[id];
+      h += '<h3>' + esc(u.label) + '</h3><dl>';
+      if (u.tipo) h += '<dt>Tipo</dt><dd>' + esc(u.tipo) + '' + '</dd>';
+      if (u.row.prof) h += '<dt>Profundidad</dt><dd>' + esc(u.row.prof) + ' cm</dd>';
+      if (u.row.desc) h += '<dt>Descripción</dt><dd>' + esc(u.row.desc) + '</dd>';
+      listRefs(u).forEach(function (p) { h += '<dt>' + esc(p[0]) + '</dt><dd class="ids">' + esc(p[1]) + '</dd>'; });
+      h += '</dl>';
+    });
+    if (c.bad) h += '<p class="msg bad">Está en un bucle: su orden no se sabe hasta resolverlo.</p>';
+    var names = function (list) { return list.length ? list.map(function (x) { return A.clsLabel(x); }).join(', ') : 'ninguna'; };
+    h += '<dl><dt>Posteriores (' + ar.later.length + ')</dt><dd class="ids">' + esc(names(ar.later)) + '</dd>' +
+      '<dt>Anteriores (' + ar.earlier.length + ')</dt><dd class="ids">' + esc(names(ar.earlier)) + '</dd></dl>';
+    h += '<div class="tools"><button type="button" class="small" id="b-unsel">Quitar selección</button></div>';
+    d.innerHTML = h; d.hidden = false;
+  }
+
+  /* ----- revisión ----- */
+  function renderProblems() {
+    var el = $('problems');
+    if (!A.order.length) { el.innerHTML = ''; return; }
+    var main = [], notes = [];
+    A.problems.forEach(function (x, i) { (x.sev === 'info' ? notes : main).push([x, i]); });
+    var word = { error: 'Error', aviso: 'Aviso', info: 'Nota' };
+    function li(p) {
+      var x = p[0];
+      return '<li class="' + x.sev + '"><span>' + esc(x.msg) + '</span>' +
+        (x.units.length ? '<button type="button" class="small go" data-p="' + p[1] + '" aria-label="Ver en la matriz">Ver</button>' : '') + '</li>';
+    }
+    var h = main.length ? '<ul class="problems">' + main.map(li).join('') + '</ul>'
+      : '<p class="clean">Sin problemas.</p>';
+    if (notes.length) h += '<details class="notes"><summary>' + notes.length + (notes.length === 1 ? ' nota' : ' notas') + '</summary><ul class="problems">' + notes.map(li).join('') + '</ul></details>';
+    el.innerHTML = h;
+    void word;
+  }
+
+  /* ----- tabla ----- */
+  var COLS = [
+    ['corte', 'Corte', 'w-s id'], ['n', 'N.º', 'w-s id'], ['tipo', 'Tipo', 'w-l'], ['prof', 'Prof. (cm)', 'w-m'], ['grosor', 'Grosor', 'w-s'],
+    ['cubre', 'Cubre', 'w-m refs', 1], ['corta', 'Corta', 'w-m refs', 1], ['rellena', 'Rellena', 'w-m refs', 1], ['apoya', 'Se apoya en', 'w-m refs', 1],
+    ['une', 'Se une a', 'w-m refs', 1], ['igual', 'Igual a', 'w-m refs', 1], ['equiv', 'Equivalente a', 'w-m refs', 1], ['incierta', 'Incierta', 'w-m refs', 1],
+    ['desc', 'Descripción', 'w-xl'], ['color', 'Color', 'w-m'], ['consist', 'Consistencia', 'w-m'], ['comp', 'Composición', 'w-xl'], ['mat', 'Materiales', 'w-l'], ['ubic', 'Ubicación', 'w-m']
+  ];
+  function relDisabled(r, k) { var ru = state.rules[M.canonType(r.tipo)]; return !!(ru && M.normRule(ru.act[k]) === 'no' && !String(r[k] || '').trim()); }
+  function renderTable() {
+    var h = '<thead><tr>' + COLS.map(function (c) { return '<th scope="col"' + (c[3] ? ' class="rel"' : '') + '>' + c[1] + '</th>'; }).join('') + '<th></th></tr></thead><tbody>';
+    state.rows.forEach(function (r, i) {
+      h += '<tr data-i="' + i + '">';
+      COLS.forEach(function (c) {
+        var k = c[0], id = 'c-' + i + '-' + k, lab = c[1] + ', fila ' + (i + 1);
+        if (k === 'tipo') {
+          var opts = M.TYPES.slice(); r.tipo = M.canonType(r.tipo);
+          if (r.tipo && opts.indexOf(r.tipo) < 0) opts.push(r.tipo);
+          h += '<td><select id="' + id + '" class="w-l" data-k="tipo" aria-label="' + lab + '"><option value=""></option>' +
+            opts.map(function (t) { return '<option' + (t === r.tipo ? ' selected' : '') + (M.TYPE_NOTE[t] ? ' title="' + esc(M.TYPE_NOTE[t]) + '"' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></td>';
+        } else {
+          h += '<td><input id="' + id + '" class="' + c[2] + '" data-k="' + k + '" value="' + esc(r[k]) + '" aria-label="' + lab + '"' +
+            (c[3] && relDisabled(r, k) ? ' disabled title="Este tipo no admite esta relación"' : '') + ' autocomplete="off" autocapitalize="off" spellcheck="false"></td>';
+        }
+      });
+      h += '<td class="del"><button type="button" class="small" data-del="' + i + '" aria-label="Quitar fila ' + (i + 1) + '">Quitar</button></td></tr>';
+    });
+    $('table').innerHTML = h + '</tbody>';
+    markRows();
+  }
+  function markRows() {
+    var hit = {};
+    if (state.sel && A && A.classes[state.sel]) A.classes[state.sel].members.forEach(function (id) { hit[A.units[id].idx] = 1; });
+    Array.prototype.forEach.call($('table').querySelectorAll('tbody tr'), function (tr) { tr.classList.toggle('hit', !!hit[tr.getAttribute('data-i')]); });
+  }
+
+  /* ----- reglas ----- */
+  function renderRules() {
+    var h = '<thead><tr><th scope="col">Tipo</th>';
+    M.RELS.forEach(function (R) {
+      if (R.key === 'igual' || R.key === 'equiv' || R.key === 'incierta') return;
+      h += '<th scope="col">' + R.act + '</th>'; if (R.order) h += '<th scope="col">' + R.pas + '</th>';
+    });
+    h += '<th scope="col">Qué es</th></tr></thead><tbody>';
+    M.TYPES.forEach(function (t, ti) {
+      h += '<tr><td>' + esc(t) + '</td>';
+      M.RELS.forEach(function (R) {
+        if (R.key === 'igual' || R.key === 'equiv' || R.key === 'incierta') return;
+        ['act', 'pas'].forEach(function (side) {
+          if (side === 'pas' && !R.order) return;
+          var v = M.normRule(state.rules[t][side][R.key]), w = v === 'si' ? '' : M.why(side, R.key, t);
+          h += '<td><select id="r-' + ti + '-' + side + '-' + R.key + '" class="v-' + v + '" data-t="' + esc(t) + '" data-side="' + side + '" data-rel="' + R.key + '"' +
+            ' aria-label="' + esc(t) + ': ' + (side === 'act' ? R.act : R.pas) + '"' + (w ? ' title="' + esc(w) + '"' : '') + '>' +
+            ['si', 'aviso', 'no'].map(function (o) { return '<option value="' + o + '"' + (o === v ? ' selected' : '') + '>' + (o === 'si' ? 'sí' : o) + '</option>'; }).join('') +
+            '</select></td>';
+        });
+      });
+      h += '<td class="tn">' + esc(M.TYPE_NOTE[t] || '') + '</td></tr>';
+    });
+    $('rules').innerHTML = h + '</tbody>';
+  }
+
+  function refresh(tableToo) {
+    A = M.analyse(state.rows, state.rules);
+    renderChips(); renderMatrix(); renderProblems();
+    if (tableToo) renderTable(); else markRows();
+    save();
+  }
+  function say(text, kind) { var m = $('msg'); m.textContent = text; m.className = 'msg ' + (kind || ''); m.hidden = !text; }
+  function select(c) { state.sel = c; renderMatrix(); markRows(); }
+
+  /* ----- eventos ----- */
+  $('table').addEventListener('input', function (e) {
+    var t = e.target, tr = t.closest('tr'); if (!tr || !t.getAttribute('data-k')) return;
+    state.rows[+tr.getAttribute('data-i')][t.getAttribute('data-k')] = t.value;
+    state.source = 'edited';
+    refresh(t.getAttribute('data-k') === 'tipo');
+  });
+  $('table').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-del]'); if (!b) return;
+    state.rows.splice(+b.getAttribute('data-del'), 1); state.sel = null; refresh(true);
+  });
+  $('matrix').addEventListener('click', function (e) {
+    var g = e.target.closest('[data-c]'); if (!g) return;
+    select(g.getAttribute('data-c') === state.sel ? null : g.getAttribute('data-c'));
+  });
+  $('matrix').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var g = e.target.closest('[data-c]'); if (!g) return;
+    e.preventDefault(); select(g.getAttribute('data-c'));
+  });
+  $('detail').addEventListener('click', function (e) { if (e.target.id === 'b-unsel') select(null); });
+  $('problems').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-p]'); if (!b) return;
+    var p = A.problems[+b.getAttribute('data-p')];
+    if (p && p.units.length && A.units[p.units[0]]) {
+      select(A.classOf(p.units[0]));
+      $('matrix').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  });
+  $('rules').addEventListener('change', function (e) {
+    var t = e.target; if (!t.getAttribute('data-rel')) return;
+    state.rules[t.getAttribute('data-t')][t.getAttribute('data-side')][t.getAttribute('data-rel')] = t.value;
+    t.className = 'v-' + t.value;
+    t.title = t.value === 'si' ? '' : M.why(t.getAttribute('data-side'), t.getAttribute('data-rel'), t.getAttribute('data-t'));
+    refresh(true);
+  });
+  $('b-rules').addEventListener('click', function () { state.rules = M.defaultRules(); renderRules(); refresh(true); });
+  $('b-add').addEventListener('click', function () {
+    var last = state.rows[state.rows.length - 1], n = '';
+    if (last) { var m = String(last.n).match(/^\d+$/); n = m ? String(+last.n + 1) : ''; }
+    state.rows.push(mk(last ? last.corte : '', n, { tipo: last ? last.tipo : 'Depósito' }));
+    refresh(true);
+    var el = $('c-' + (state.rows.length - 1) + '-' + (n ? 'prof' : 'n')); if (el) el.focus();
+  });
+  $('b-paste').addEventListener('click', function () { $('paste-panel').hidden = false; $('copy-panel').hidden = true; $('paste-box').focus(); });
+  $('b-cancel').addEventListener('click', function () { $('paste-panel').hidden = true; });
+  $('b-read').addEventListener('click', function () {
+    var res = M.importTable($('paste-box').value);
+    if (res.error) { say(res.error, 'bad'); return; }
+    state.rows = res.rows; state.sel = null; state.source = 'edited';
+    $('paste-panel').hidden = true; $('paste-box').value = '';
+    refresh(true);
+    say('Leídas ' + res.rows.length + ' filas con datos' + (res.skipped ? ' (' + res.skipped + ' vacías, sin usar)' : '') + '.', 'ok');
+  });
+  $('b-copy').addEventListener('click', function () {
+    var text = M.exportTable(state.rows);
+    function fallback() { $('copy-panel').hidden = false; $('paste-panel').hidden = true; var b = $('copy-box'); b.value = text; b.focus(); b.select(); }
+    try {
+      navigator.clipboard.writeText(text).then(function () { say('Tabla copiada. Pégala en tu hoja.', 'ok'); }, fallback);
+    } catch (e) { fallback(); }
+  });
+  $('b-copyclose').addEventListener('click', function () { $('copy-panel').hidden = true; });
+  $('b-ex').addEventListener('click', function () { state.rows = example(false); state.sel = null; refresh(true); say('Ejemplo inventado, no son datos reales.', ''); });
+  $('b-exbad').addEventListener('click', function () { state.rows = example(true); state.sel = null; refresh(true); say('Ejemplo con fallos puestos a propósito.', ''); });
+  $('b-mine').addEventListener('click', function () { state.rows = mine(); state.sel = null; refresh(true); say('Tus cuatro filas. La segunda pestaña entra como UE2.', ''); });
+  var armed = false, timer = null;
+  $('b-clear').addEventListener('click', function () {
+    var b = $('b-clear');
+    if (!armed) { armed = true; b.textContent = 'Confirmar: vaciar la tabla'; timer = setTimeout(function () { armed = false; b.textContent = 'Vaciar'; }, 4000); return; }
+    clearTimeout(timer); armed = false; b.textContent = 'Vaciar';
+    state.rows = [mk('', '1', { tipo: 'Depósito' })]; state.sel = null; refresh(true); say('Tabla vaciada.', '');
+  });
+
+  function route() {
+    var v = location.hash === '#reglas' ? 'reglas' : 'matriz';
+    $('v-matriz').hidden = v !== 'matriz'; $('v-reglas').hidden = v !== 'reglas';
+    $('t-matriz').setAttribute('aria-current', v === 'matriz' ? 'page' : 'false');
+    $('t-reglas').setAttribute('aria-current', v === 'reglas' ? 'page' : 'false');
+  }
+  window.addEventListener('hashchange', route);
+  document.querySelector('.menu').addEventListener('click', function (e) { if (e.target.closest('button') && e.target.id !== 'b-clear') document.querySelector('.more').open = false; });
+  document.addEventListener('click', function (e) { var m = document.querySelector('.more'); if (m.open && !e.target.closest('.more')) m.open = false; });
+  route();
+  renderRules();
+  refresh(true);
+})();
+</script>
+</body>
+</html>
